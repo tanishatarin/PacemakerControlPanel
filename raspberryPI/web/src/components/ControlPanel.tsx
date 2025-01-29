@@ -38,6 +38,119 @@ const getStepSize = (value: number, title: string) => {
   return 1;
 };
 
+const getValueColor = (value: number, minValue: number, maxValue: number) => {
+  const percentage = (value - minValue) / (maxValue - minValue) * 100;
+  if (percentage < 33) return '#4ade80'; // green
+  if (percentage < 66) return '#fbbf24'; // yellow
+  return '#ef4444'; // red
+};
+
+const CircularControl: React.FC<ControlSectionProps> = ({ 
+  title, 
+  value, 
+  unit, 
+  onChange,
+  isLocked,
+  minValue,
+  maxValue,
+  onLockError,
+  isDimmed
+}) => {
+  const color = getValueColor(value, minValue, maxValue);
+  const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
+  
+  // SVG circle parameters
+  const radius = 40;
+  const stroke = 8;
+  const normalizedRadius = radius - stroke / 2;
+  const circumference = 2 * Math.PI * normalizedRadius;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  const handleChange = (newValue: number) => {
+    if (isLocked) {
+      onLockError?.();
+    } else {
+      onChange(newValue);
+    }
+  };
+
+  return (
+    <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl text-gray-800">{title}</h2>
+        <div className="flex items-center gap-8">
+          <div className="relative w-24 h-24">
+            <svg className="transform -rotate-90 w-full h-full">
+              {/* Background circle */}
+              <circle
+                stroke="#e5e7eb"
+                fill="transparent"
+                strokeWidth={stroke}
+                r={normalizedRadius}
+                cx={radius + stroke}
+                cy={radius + stroke}
+              />
+              {/* Progress circle */}
+              <circle
+                stroke={color}
+                fill="transparent"
+                strokeWidth={stroke}
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                r={normalizedRadius}
+                cx={radius + stroke}
+                cy={radius + stroke}
+                className="transition-all duration-300 ease-in-out"
+              />
+              {/* Current value */}
+              <text
+                x={radius + stroke}
+                y={radius + stroke}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={color}
+                className="text-lg font-bold"
+                style={{ transform: 'rotate(90deg)', transformOrigin: 'center' }}
+              >
+                {value.toFixed(unit === 'ppm' ? 0 : 1)}
+              </text>
+            </svg>
+          </div>
+          <div className="text-right">
+            <span className="text-2xl font-bold" style={{ color }}>
+              {value.toFixed(unit === 'ppm' ? 0 : 1)} {unit}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label className="block mb-2 text-sm text-gray-600">Adjust Value:</label>
+        <div className="relative">
+          <div className="h-2 bg-gray-100 rounded-full">
+            <div 
+              className="absolute h-full rounded-full transition-all duration-300 ease-in-out"
+              style={{ 
+                width: `${percentage}%`,
+                backgroundColor: color
+              }}
+            />
+          </div>
+          <input
+            type="range"
+            min={minValue}
+            max={maxValue}
+            value={value}
+            step={getStepSize(value, title)}
+            onChange={(e) => handleChange(parseFloat(e.target.value))}
+            className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Rest of the components remain the same as before
 const ToggleControl: React.FC<ToggleControlProps> = ({
   title,
   value,
@@ -78,12 +191,6 @@ const DDDModeControl: React.FC<DDDModeControlProps> = ({
         <span className="text-sm font-medium">{value.toFixed(1)} {unit}</span>
       </div>
       <div className="relative">
-        {showMinMax && (
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>{minValue}</span>
-            <span>{maxValue}</span>
-          </div>
-        )}
         <div className="h-2 bg-gray-100 rounded-full">
           <div 
             className="absolute h-full bg-blue-500 rounded-full transition-all duration-300 ease-in-out"
@@ -104,118 +211,6 @@ const DDDModeControl: React.FC<DDDModeControlProps> = ({
   );
 };
 
-const CircularControl: React.FC<ControlSectionProps> = ({ 
-  title, 
-  value, 
-  unit, 
-  onChange,
-  isLocked,
-  minValue,
-  maxValue,
-  onLockError,
-  isDimmed
-}) => {
-  const getColor = (value: number) => {
-    const percentage = (value - minValue) / (maxValue - minValue) * 100;
-    if (percentage < 33) return '#4ade80';
-    if (percentage < 66) return '#fbbf24';
-    return '#ef4444';
-  };
-
-  const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
-  const color = getColor(value);
-  
-  const radius = 44;
-  const circumference = 2 * Math.PI * radius;
-  const gapDegrees = 116;
-  const gapOffset = (gapDegrees / 360) * circumference;
-  const dashArray = circumference - gapOffset;
-  
-  const strokeOffset = (gapOffset / 2) + ((dashArray - gapOffset) * (100 - percentage)) / 100;
-
-  const handleChange = (newValue: number) => {
-    if (isLocked) {
-      onLockError?.();
-    } else {
-      onChange(newValue);
-    }
-  };
-
-  return (
-    <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
-      <div className="flex flex-col">
-        <div className="flex items-center mb-6">
-          <div className="flex-1">
-            <h2 className="text-xl text-gray-800">{title}</h2>
-            {isDimmed && (
-              <p className="text-sm text-gray-500">Adjust slider to reactivate</p>
-            )}
-          </div>
-          <div className="flex items-center gap-12">
-            <div className="relative w-24 h-24">
-              <div className="absolute -left-2 top-1/2 -translate-y-1/2 text-sm text-gray-600">
-                {minValue}
-              </div>
-              <svg className="w-full h-full transform rotate-[150deg]">
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={radius}
-                  stroke="#e5e7eb"
-                  strokeWidth="8"
-                  fill="none"
-                  strokeDasharray={`${dashArray} ${gapOffset}`}
-                />
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={radius}
-                  stroke={color}
-                  strokeWidth="8"
-                  fill="none"
-                  strokeDasharray={`${dashArray} ${gapOffset}`}
-                  strokeDashoffset={strokeOffset}
-                  className="transition-all duration-300 ease-in-out"
-                />
-              </svg>
-              <div className="absolute -right-2 top-1/2 -translate-y-1/2 text-sm text-gray-600">
-                {maxValue}
-              </div>
-            </div>
-            <div className="w-24 text-right">
-              <span className="text-2xl font-bold" style={{ color }}>
-                {value.toFixed(unit === 'ppm' ? 0 : 1)} {unit}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="px-4">
-        <label className="block mb-2 text-sm text-gray-600">Adjust Value:</label>
-        <div className="relative">
-          <div className="h-2 bg-gray-100 rounded-full">
-            <div 
-              className="absolute h-full rounded-full transition-all duration-300 ease-in-out"
-              style={{ 
-                width: `${percentage}%`,
-                backgroundColor: color
-              }}
-            />
-          </div>
-          <input
-            type="range"
-            min={minValue}
-            max={maxValue}
-            value={value}
-            step={getStepSize(value, title)}
-            onChange={(e) => handleChange(parseFloat(e.target.value))}
-            className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const RapidPacingScreen: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [rapValue, setRapValue] = useState(250);
