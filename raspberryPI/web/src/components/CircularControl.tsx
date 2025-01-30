@@ -1,0 +1,359 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronLeft, ChevronUp, ChevronDown, Key, Lock, LockOpen, Pause, ArrowLeft, Zap } from 'lucide-react';
+
+interface ControlSectionProps {
+  title: string;
+  value: number;
+  unit: string;
+  onChange: (value: number) => void;
+  isLocked?: boolean;
+  minValue: number;
+  maxValue: number;
+  onLockError?: () => void;
+  isDimmed?: boolean;
+}
+
+// const CircularControl: React.FC<ControlSectionProps> = ({ 
+//     title, 
+//     value, 
+//     unit, 
+//     onChange,
+//     isLocked,
+//     minValue,
+//     maxValue,
+//     onLockError,
+//     isDimmed
+//   }) => {
+//     const getColor = (value: number) => {
+//       const percentage = (value - minValue) / (maxValue - minValue) * 100;
+//       if (percentage < 33) return '#4ade80';
+//       if (percentage < 66) return '#fbbf24';
+//       return '#ef4444';
+//     };
+  
+//     const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
+//     const color = getColor(value);
+    
+//     // SVG parameters
+//     const radius = 40;
+//     const stroke = 8;
+//     const normalizedRadius = radius - stroke / 2;
+//     const circumference = 2 * Math.PI * normalizedRadius;
+//     const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  
+//     const handleChange = (newValue: number) => {
+//       if (isLocked) {
+//         onLockError?.();
+//       } else {
+//         onChange(newValue);
+//       }
+//     };
+  
+//     // Calculate positions for min/max labels
+//     const getPositionOnCircle = (percent: number) => {
+//       // Adjust the angle to start from the left and go clockwise
+//       const angle = (percent * Math.PI * 1.5) - (Math.PI * 0.75);
+//       const x = radius + stroke + (normalizedRadius + 16) * Math.cos(angle);
+//       const y = radius + stroke + (normalizedRadius + 16) * Math.sin(angle);
+//       return { x, y };
+//     };
+  
+//     const minPos = getPositionOnCircle(0);
+//     const maxPos = getPositionOnCircle(1);
+  
+//     return (
+//       <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
+//         <div className="flex flex-col">
+//           <div className="flex items-center mb-6">
+//             <div className="flex-1">
+//               <h2 className="text-xl text-gray-800">{title}</h2>
+//               {isDimmed && (
+//                 <p className="text-sm text-gray-500">Adjust value to reactivate</p>
+//               )}
+//             </div>
+//             <div className="flex items-center gap-8">
+//               <div className="relative w-24 h-24">
+//                 <svg className="transform -rotate-90 w-full h-full">
+//                   {/* Background circle */}
+//                   <circle
+//                     stroke="#e5e7eb"
+//                     fill="transparent"
+//                     strokeWidth={stroke}
+//                     r={normalizedRadius}
+//                     cx={radius + stroke}
+//                     cy={radius + stroke}
+//                     className="opacity-30"
+//                   />
+                  
+//                   {/* Progress circle */}
+//                   <circle
+//                     stroke={color}
+//                     fill="transparent"
+//                     strokeWidth={stroke}
+//                     strokeLinecap="round"
+//                     strokeDasharray={circumference}
+//                     strokeDashoffset={strokeDashoffset}
+//                     r={normalizedRadius}
+//                     cx={radius + stroke}
+//                     cy={radius + stroke}
+//                     className="transition-all duration-300 ease-in-out"
+//                   />
+                  
+//                   {/* Current value */}
+//                   <text
+//                     x={radius + stroke}
+//                     y={radius + stroke}
+//                     textAnchor="middle"
+//                     dominantBaseline="middle"
+//                     fill={color}
+//                     className="text-lg font-bold"
+//                     style={{ transform: 'rotate(90deg)', transformOrigin: 'center' }}
+//                   >
+//                     {value.toFixed(unit === 'ppm' ? 0 : 1)}
+//                   </text>
+  
+//                   {/* Range marks */}
+//                   <g style={{ transform: 'rotate(90deg)', transformOrigin: 'center' }}>
+//                     {/* Min value */}
+//                     <text 
+//                       x={minPos.x} 
+//                       y={minPos.y} 
+//                       className="text-xs fill-gray-400"
+//                       textAnchor="middle"
+//                       dominantBaseline="middle"
+//                     >
+//                       {minValue}
+//                     </text>
+                    
+//                     {/* Max value */}
+//                     <text 
+//                       x={maxPos.x} 
+//                       y={maxPos.y}
+//                       className="text-xs fill-gray-400"
+//                       textAnchor="middle"
+//                       dominantBaseline="middle"
+//                     >
+//                       {maxValue}
+//                     </text>
+//                   </g>
+//                 </svg>
+//               </div>
+//               <div className="w-24 text-right">
+//                 <span className="text-2xl font-bold" style={{ color }}>
+//                   {value.toFixed(unit === 'ppm' ? 0 : 1)} {unit}
+//                 </span>
+//               </div>
+//             </div>
+//           </div>
+//         </div>
+//         <div className="px-4">
+//           <label className="block mb-2 text-sm text-gray-600">Adjust Value:</label>
+//           <div className="relative">
+//             <div className="h-2 bg-gray-100 rounded-full">
+//               <div 
+//                 className="absolute h-full rounded-full transition-all duration-300 ease-in-out"
+//                 style={{ 
+//                   width: `${percentage}%`,
+//                   backgroundColor: color
+//                 }}
+//               />
+//             </div>
+//             <input
+//               type="range"
+//               min={minValue}
+//               max={maxValue}
+//               value={value}
+//               step={getStepSize(value, title)}
+//               onChange={(e) => handleChange(parseFloat(e.target.value))}
+//               className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
+//             />
+//           </div>
+//         </div>
+//       </div>
+//     );
+//   };
+
+// // Helper function for step size
+
+const CircularControl: React.FC<ControlSectionProps> = ({ 
+    title, 
+    value, 
+    unit, 
+    onChange,
+    isLocked,
+    minValue,
+    maxValue,
+    onLockError,
+    isDimmed
+  }) => {
+    const getColor = (value: number) => {
+      const percentage = (value - minValue) / (maxValue - minValue) * 100;
+      if (percentage < 33) return '#4ade80';
+      if (percentage < 66) return '#fbbf24';
+      return '#ef4444';
+    };
+  
+    const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
+    const color = getColor(value);
+    
+    // SVG parameters
+    const radius = 34;
+    const stroke = 8;
+    const normalizedRadius = radius - stroke / 2;
+    
+    // Arc parameters
+    const startAngle = -120; // Degrees where arc starts
+    const endAngle = 120;   // Degrees where arc ends
+    const angleRange = endAngle - startAngle;
+    
+    // Calculate the SVG path for the arc
+    const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+      const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+      return {
+        x: centerX + (radius * Math.cos(angleInRadians)),
+        y: centerY + (radius * Math.sin(angleInRadians))
+      };
+    };
+  
+    const createArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
+      const start = polarToCartesian(x, y, radius, endAngle);
+      const end = polarToCartesian(x, y, radius, startAngle);
+      const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+      
+      return [
+        "M", start.x, start.y, 
+        "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y
+      ].join(" ");
+    };
+  
+    // Calculate progress endpoint based on current value
+    const progressAngle = startAngle + (percentage / 100) * angleRange;
+    
+    const center = radius + stroke;
+    const backgroundArc = createArc(center, center, normalizedRadius, startAngle, endAngle);
+    const progressArc = createArc(center, center, normalizedRadius, startAngle, progressAngle);
+  
+    const handleChange = (newValue: number) => {
+      if (isLocked) {
+        onLockError?.();
+      } else {
+        onChange(newValue);
+      }
+    };
+  
+    // Calculate position for min/max labels
+    const minPos = polarToCartesian(center, center, normalizedRadius + 14, startAngle);
+    const maxPos = polarToCartesian(center, center, normalizedRadius + 14, endAngle);
+  
+    return (
+      <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
+        <div className="flex flex-col">
+          <div className="flex items-center mb-6">
+            <div className="flex-1">
+              <h2 className="text-xl text-gray-800">{title}</h2>
+              {isDimmed && (
+                <p className="text-sm text-gray-500">Adjust value to reactivate</p>
+              )}
+            </div>
+            <div className="flex items-center gap-8">
+              <div className="relative w-24 h-24">
+                <svg className="w-full h-full">
+                  {/* Range text */}
+                  
+                                  <text 
+                  x={minPos.x - 3} 
+                  y={minPos.y + 3} 
+                  className="text-[10px] fill-gray-400"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {minValue}
+                </text>
+                <text 
+                  x={maxPos.x + 3} 
+                  y={maxPos.y + 3} 
+                  className="text-[10px] fill-gray-400"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {maxValue}
+                </text>
+  
+                  {/* Background arc */}
+                  <path
+                    d={backgroundArc}
+                    fill="none"
+                    stroke="#e5e7eb"
+                    strokeWidth={stroke}
+                    className="opacity-30"
+                  />
+                  
+                  {/* Progress arc */}
+                  <path
+                    d={progressArc}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={stroke}
+                    strokeLinecap="round"
+                    className="transition-all duration-300 ease-in-out"
+                  />
+                  
+                  {/* Current value */}
+                  <text
+                    x={center}
+                    y={center}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill={color}
+                    className="text-lg font-bold"
+                  >
+                    {value.toFixed(unit === 'ppm' ? 0 : 1)}
+                  </text>
+                </svg>
+              </div>
+              <div className="w-24 text-right">
+                <span className="text-2xl font-bold" style={{ color }}>
+                  {value.toFixed(unit === 'ppm' ? 0 : 1)} {unit}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="px-4">
+          <label className="block mb-2 text-sm text-gray-600">Adjust Value:</label>
+          <div className="relative">
+            <div className="h-2 bg-gray-100 rounded-full">
+              <div 
+                className="absolute h-full rounded-full transition-all duration-300 ease-in-out"
+                style={{ 
+                  width: `${percentage}%`,
+                  backgroundColor: color
+                }}
+              />
+            </div>
+            <input
+              type="range"
+              min={minValue}
+              max={maxValue}
+              value={value}
+              step={getStepSize(value, title)}
+              onChange={(e) => handleChange(parseFloat(e.target.value))}
+              className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+const getStepSize = (value: number, title: string) => {
+  if (title !== "Rate") {
+    if (value <= 1) return 0.1;
+    if (value <= 4) return 0.5;
+    return 1.0;
+  }
+  return 1;
+};
+
+// // Export the component
+export default CircularControl;
