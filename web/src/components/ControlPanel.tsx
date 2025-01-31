@@ -3,18 +3,6 @@ import { ChevronLeft, ChevronUp, ChevronDown, Key, Lock, LockOpen, Pause, ArrowL
 import CircularControl from './CircularControl';
 import ECGVisualizer from './ECGVisualizer';
 
-interface ControlSectionProps {
-  title: string;
-  value: number;
-  unit: string;
-  onChange: (value: number) => void;
-  isLocked?: boolean;
-  minValue: number;
-  maxValue: number;
-  onLockError?: () => void;
-  isDimmed?: boolean;
-}
-
 interface DDDModeControlProps {
   title: string;
   value: number;
@@ -30,129 +18,6 @@ interface ToggleControlProps {
   value: boolean;
   onChange: (value: boolean) => void;
 }
-
-const getStepSize = (value: number, title: string) => {
-  if (title !== "Rate") {
-    if (value <= 1) return 0.1;
-    if (value <= 4) return 0.5;
-    return 1.0;
-  }
-  return 1;
-};
-
-const getValueColor = (value: number, minValue: number, maxValue: number) => {
-  const percentage = (value - minValue) / (maxValue - minValue) * 100;
-  if (percentage < 33) return '#4ade80'; // green
-  if (percentage < 66) return '#fbbf24'; // yellow
-  return '#ef4444'; // red
-};
-
-// const CircularControl: React.FC<ControlSectionProps> = ({ 
-//   title, 
-//   value, 
-//   unit, 
-//   onChange,
-//   isLocked,
-//   minValue,
-//   maxValue,
-//   onLockError,
-//   isDimmed
-// }) => {
-//   const color = getValueColor(value, minValue, maxValue);
-//   const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
-  
-//   // SVG circle parameters
-//   const radius = 40;
-//   const stroke = 8;
-//   const normalizedRadius = radius - stroke / 2;
-//   const circumference = 2 * Math.PI * normalizedRadius;
-//   const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-//   const handleChange = (newValue: number) => {
-//     if (isLocked) {
-//       onLockError?.();
-//     } else {
-//       onChange(newValue);
-//     }
-//   };
-
-//   return (
-//     <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
-//       <div className="flex items-center justify-between mb-6">
-//         <h2 className="text-xl text-gray-800">{title}</h2>
-//         <div className="flex items-center gap-8">
-//           <div className="relative w-24 h-24">
-//             <svg className="transform -rotate-90 w-full h-full">
-//               {/* Background circle */}
-//               <circle
-//                 stroke="#e5e7eb"
-//                 fill="transparent"
-//                 strokeWidth={stroke}
-//                 r={normalizedRadius}
-//                 cx={radius + stroke}
-//                 cy={radius + stroke}
-//               />
-//               {/* Progress circle */}
-//               <circle
-//                 stroke={color}
-//                 fill="transparent"
-//                 strokeWidth={stroke}
-//                 strokeDasharray={circumference}
-//                 strokeDashoffset={strokeDashoffset}
-//                 r={normalizedRadius}
-//                 cx={radius + stroke}
-//                 cy={radius + stroke}
-//                 className="transition-all duration-300 ease-in-out"
-//               />
-//               {/* Current value */}
-//               <text
-//                 x={radius + stroke}
-//                 y={radius + stroke}
-//                 textAnchor="middle"
-//                 dominantBaseline="middle"
-//                 fill={color}
-//                 className="text-lg font-bold"
-//                 style={{ transform: 'rotate(90deg)', transformOrigin: 'center' }}
-//               >
-//                 {value.toFixed(unit === 'ppm' ? 0 : 1)}
-//               </text>
-//             </svg>
-//           </div>
-//           <div className="text-right">
-//             <span className="text-2xl font-bold" style={{ color }}>
-//               {value.toFixed(unit === 'ppm' ? 0 : 1)} {unit}
-//             </span>
-//           </div>
-//         </div>
-//       </div>
-//       <div>
-//         <label className="block mb-2 text-sm text-gray-600">Adjust Value:</label>
-//         <div className="relative">
-//           <div className="h-2 bg-gray-100 rounded-full">
-//             <div 
-//               className="absolute h-full rounded-full transition-all duration-300 ease-in-out"
-//               style={{ 
-//                 width: `${percentage}%`,
-//                 backgroundColor: color
-//               }}
-//             />
-//           </div>
-//           <input
-//             type="range"
-//             min={minValue}
-//             max={maxValue}
-//             value={value}
-//             step={getStepSize(value, title)}
-//             onChange={(e) => handleChange(parseFloat(e.target.value))}
-//             className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-//           />
-//         </div>
-//       </div>
-//     </div>
-//   );
-// };
-
-
 
 const ToggleControl: React.FC<ToggleControlProps> = ({
   title,
@@ -195,7 +60,7 @@ const DDDModeControl: React.FC<DDDModeControlProps> = ({
       <div className="relative">
         <div className="h-2 bg-gray-100 rounded-full">
           <div 
-            className="absolute h-full bg-blue-500 rounded-full transition-all duration-300 ease-in-out"
+            className="absolute h-full bg-blue-500 rounded-full transition-all duration-150 ease-out"
             style={{ width: `${percentage}%` }}
           />
         </div>
@@ -213,7 +78,6 @@ const DDDModeControl: React.FC<DDDModeControlProps> = ({
   );
 };
 
-
 const RapidPacingScreen: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [rapValue, setRapValue] = useState(250);
   const [isDelivering, setIsDelivering] = useState(false);
@@ -229,10 +93,9 @@ const RapidPacingScreen: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const handleDeliveryStart = () => {
     setIsDelivering(true);
-    // In a real implementation, this would trigger the rapid pacing
     deliveryTimeout.current = window.setTimeout(() => {
       setIsDelivering(false);
-    }, 5000); // 5-second demo delivery
+    }, 5000);
   };
 
   const handleDeliveryEnd = () => {
@@ -307,12 +170,7 @@ const ControlPanel = () => {
   const [settings, setSettings] = useState("Automatic");
 
   const pauseTimerRef = useRef<number>();
-  const modes = [
-    'VOO', 'VVI',
-    'VVT', 'AOO',
-    'AAI', 'DOO',
-    'DDD', 'DDI'
-  ];
+  const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
 
   useEffect(() => {
     if (isPausing) {
@@ -473,7 +331,7 @@ const ControlPanel = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-8 bg-gray-50 min-h-screen">
+    <div className="max-w-2xl mx-auto p-9 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="bg-white rounded-3xl shadow-sm p-4 mb-6 flex justify-between items-center">
         <div className="flex items-center gap-4">
@@ -533,7 +391,7 @@ const ControlPanel = () => {
       </button>
 
       {/* Controls */}
-      <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
+      <div className="bg-white rounded-3xl shadow-sm p-10 mb-6">
         <CircularControl
           title="Rate"
           value={rate}
@@ -645,8 +503,7 @@ const ControlPanel = () => {
         </div>
       )}
 
-
-      {/* ekg testing  */}
+      {/* ECG Visualization */}
       <ECGVisualizer 
         rate={rate} 
         aOutput={aOutput} 

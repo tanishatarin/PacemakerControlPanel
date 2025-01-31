@@ -86,36 +86,35 @@ const CircularControl: React.FC<ControlSectionProps> = ({
     return (
       <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
         <div className="flex flex-col">
-          <div className="flex items-center mb-6">
-            <div className="flex-1">
+          <div className="flex items-center mb-4">
+            <div className="flex-1 pl-4">
               <h2 className="text-xl text-gray-800">{title}</h2>
               {isDimmed && (
                 <p className="text-sm text-gray-500">Adjust value to reactivate</p>
               )}
             </div>
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-4">
               <div className="relative w-24 h-24">
                 <svg className="w-full h-full">
-                  {/* Range text */}
-                  
-                                  <text 
-                  x={minPos.x - 3} 
-                  y={minPos.y + 3} 
-                  className="text-[10px] fill-gray-400"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                >
-                  {minValue}
-                </text>
-                <text 
-                  x={maxPos.x + 3} 
-                  y={maxPos.y + 3} 
-                  className="text-[10px] fill-gray-400"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                >
-                  {maxValue}
-                </text>
+                    {/* Range text */}
+                    <text 
+                    x={minPos.x + 18} 
+                    y={minPos.y + 8} 
+                    className="text-[13px] fill-gray-400"
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    >
+                    {minValue}
+                    </text>
+                    <text 
+                    x={maxPos.x - 21} 
+                    y={maxPos.y + 8} 
+                    className="text-[13px] fill-gray-400"
+                    textAnchor="start"
+                    dominantBaseline="middle"
+                    >
+                    {maxValue}
+                    </text>
   
                   {/* Background arc */}
                   <path
@@ -123,7 +122,8 @@ const CircularControl: React.FC<ControlSectionProps> = ({
                     fill="none"
                     stroke="#e5e7eb"
                     strokeWidth={stroke}
-                    className="opacity-30"
+                    strokeLinecap="round"
+                    className="opacity-50"
                   />
                   
                   {/* Progress arc */}
@@ -133,7 +133,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
                     stroke={color}
                     strokeWidth={stroke}
                     strokeLinecap="round"
-                    className="transition-all duration-300 ease-in-out"
+                    className="transition-all duration-150 ease-out"
                   />
                   
                   {/* Current value */}
@@ -149,7 +149,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
                   </text>
                 </svg>
               </div>
-              <div className="w-24 text-right">
+              <div className="w-30 text-right pr-4">
                 <span className="text-2xl font-bold" style={{ color }}>
                   {value.toFixed(unit === 'ppm' ? 0 : 1)} {unit}
                 </span>
@@ -162,7 +162,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
           <div className="relative">
             <div className="h-2 bg-gray-100 rounded-full">
               <div 
-                className="absolute h-full rounded-full transition-all duration-300 ease-in-out"
+                className="absolute h-full rounded-full transition-all duration-150 ease-out"
                 style={{ 
                   width: `${percentage}%`,
                   backgroundColor: color
@@ -193,5 +193,4 @@ const getStepSize = (value: number, title: string) => {
   return 1;
 };
 
-// // Export the component
 export default CircularControl;
