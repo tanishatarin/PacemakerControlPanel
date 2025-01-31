@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LineChart,
   Line,
@@ -9,7 +9,7 @@ import {
 } from "recharts";
 
 const ECGVisualizer = ({ rate = 60, aOutput = 5, vOutput = 5 }) => {
-  const [data, setData] = useState([]);
+  const [data, setData] = useState<{ x: number; y: number }[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Define the base complex with physiologically accurate wave morphology
@@ -33,14 +33,14 @@ const ECGVisualizer = ({ rate = 60, aOutput = 5, vOutput = 5 }) => {
   ];
 
   // Non-linear scaling function to simulate physiological response
-  const calculateNonLinearScale = (output, maxResponse = 5) => {
+  const calculateNonLinearScale = (output: number, maxResponse = 5) => {
     // Logarithmic scaling function that plateaus as current increases
     return Math.min(maxResponse, Math.log(output + 1) / Math.log(6));
   };
 
   // Generate multiple complexes with amplitude adjustments
   const generatePoints = () => {
-    const points = [];
+    const points: { x: number; y: number }[] = [];
     const numberOfComplexes = 10;
     
     // Calculate non-linear scaling factors

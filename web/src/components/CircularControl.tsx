@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Key, Lock, LockOpen, Pause, ArrowLeft, Zap } from 'lucide-react';
+import React from 'react';
 
 interface ControlSectionProps {
   title: string;
