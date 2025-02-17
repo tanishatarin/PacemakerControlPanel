@@ -10,7 +10,7 @@ import {
 
 const ECGVisualizer = ({ rate = 60, aOutput = 5, vOutput = 5 }) => {
   const [data, setData] = useState<{ x: number; y: number }[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [_currentIndex, setCurrentIndex] = useState(0);
 
   // Define the base complex with physiologically accurate wave morphology
   const baseComplex = [
