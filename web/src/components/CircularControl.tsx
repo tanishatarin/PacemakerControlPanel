@@ -21,7 +21,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
     minValue,
     maxValue,
     onLockError,
-    isDimmed
+    isDimmed = false
   }) => {
     const getColor = (value: number) => {
       const percentage = (value - minValue) / (maxValue - minValue) * 100;
@@ -81,14 +81,17 @@ const CircularControl: React.FC<ControlSectionProps> = ({
     // Calculate position for min/max labels
     const minPos = polarToCartesian(center, center, normalizedRadius + 14, startAngle);
     const maxPos = polarToCartesian(center, center, normalizedRadius + 14, endAngle);
+
+    // Determine if control should be visually disabled (at 0.0 mA for outputs)
+    const isVisuallyDisabled = (title.includes("Output") && value === 0) || isDimmed;
   
     return (
-      <div className={`mb-8 transition-opacity duration-300 ${isDimmed ? 'opacity-50' : 'opacity-100'}`}>
+      <div className={`mb-8 transition-opacity duration-300 ${isVisuallyDisabled ? 'opacity-40' : 'opacity-100'}`}>
         <div className="flex flex-col">
           <div className="flex items-center mb-4">
             <div className="flex-1 pl-4">
               <h2 className="text-xl text-gray-800">{title}</h2>
-              {isDimmed && (
+              {isVisuallyDisabled && (
                 <p className="text-sm text-gray-500">Adjust value to reactivate</p>
               )}
             </div>
@@ -184,12 +187,18 @@ const CircularControl: React.FC<ControlSectionProps> = ({
   };
 
 const getStepSize = (value: number, title: string) => {
-  if (title !== "Rate") {
-    if (value <= 1) return 0.1;
-    if (value <= 4) return 0.5;
+  if (title === "Rate") {
+    if (value < 50) return 5;
+    if (value < 100) return 2;  
+    if (value < 170) return 5;
+    return 6;
+  } else {
+    // For A. Output and V. Output
+    if (value < 0.4) return 0.1;
+    if (value < 1) return 0.2;
+    if (value < 5) return 0.5;
     return 1.0;
   }
-  return 1;
 };
 
 export default CircularControl;
