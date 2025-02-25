@@ -7,14 +7,18 @@ interface NotificationsProps {
   pauseTimeLeft: number;
 }
 
-export const Notifications: React.FC<NotificationsProps> = ({
+const Notifications: React.FC<NotificationsProps> = ({
   showAsyncMessage,
   showLockMessage,
   isPausing,
-  pauseTimeLeft,
+  pauseTimeLeft
 }) => {
+  if (!showAsyncMessage && !showLockMessage && !isPausing) {
+    return null;
+  }
+
   return (
-    <div className="fixed bottom-4 right-4 space-y-4">
+    <div className="fixed bottom-4 right-4 space-y-4 z-50">
       {showAsyncMessage && (
         <div className="bg-white p-4 rounded-xl shadow-lg">
           <p className="text-blue-500 font-medium">Asynchronous Pacing activated</p>
@@ -38,3 +42,5 @@ export const Notifications: React.FC<NotificationsProps> = ({
     </div>
   );
 };
+
+export default Notifications;
