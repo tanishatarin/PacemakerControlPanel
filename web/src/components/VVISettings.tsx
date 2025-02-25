@@ -10,7 +10,6 @@ interface VVISettingsProps {
 const VVISettings: React.FC<VVISettingsProps> = ({
   vSensitivity,
   onVSensitivityChange,
-  onBack,
   isLocked
 }) => {
   // Function to get slider color based on value
@@ -29,46 +28,74 @@ const VVISettings: React.FC<VVISettingsProps> = ({
     return 2;
   };
 
+  // Similar conversion functions for V sensitivity
+  const vSliderToValue = (sliderValue: number): number => {
+    if (sliderValue >= 99.5) return 0; // ASYNC when at maximum position
+    // Map from 0-99.5 to 20-0.8 range (inverted)
+    return 20 - (sliderValue / 99.5) * 19.2;
+  };
+
+  const vValueToSlider = (actualValue: number): number => {
+    if (actualValue === 0) return 100; // Slider at maximum for ASYNC
+    // Map from 20-0.8 range to 0-99.5 (inverted)
+    return ((20 - actualValue) / 19.2) * 99.5;
+  };
+
+  // Handle V sensitivity slider change
+  const handleVSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const sliderValue = parseFloat(e.target.value);
+    const actualValue = vSliderToValue(sliderValue);
+    onVSensitivityChange(parseFloat(actualValue.toFixed(1)));
+  };
+
+  const isVSensitivityDisabled = vSensitivity === 0;
+
   return (
-    <div className="p-4">
-      <div className="bg-white rounded-xl shadow-sm mb-6">
-        <div className="flex justify-between items-center px-4 py-3 border-b">
+    <div className="">
+      <div className="bg-white rounded-xl">
+        <div className="flex justify-between items-center  border-b">
           <h2 className="text-lg font-semibold">VVI Settings</h2>
           <div className="w-5"></div> {/* Spacer for alignment */}
         </div>
         
-        <div className="p-3 space-y-4">
+        <div className="p-4 space-y-4">
           {/* V Sensitivity - Enabled */}
-          <div>
-            <div className="flex justify-between items-center mb-1">
+          <div className={isVSensitivityDisabled ? "opacity-50" : ""}>
+            <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-700">V Sensitivity</span>
-              <span className="text-sm font-medium">{vSensitivity.toFixed(1)} mV</span>
+              <span className="text-sm font-medium">
+                {vSensitivity === 0 ? "ASYNC" : `${vSensitivity.toFixed(1)} mV`}
+              </span>
             </div>
             <div className="relative">
               <div className="h-2 bg-gray-100 rounded-full">
                 <div 
                   className="absolute h-full rounded-full transition-all duration-150 ease-out"
                   style={{ 
-                    width: `${((vSensitivity - 0.8) / (20 - 0.8)) * 100}%`,
-                    backgroundColor: getSliderColor(vSensitivity, 0.8, 20) 
+                    left: '0',
+                    width: `${vValueToSlider(vSensitivity)}%`,
+                    backgroundColor: isVSensitivityDisabled ? "#9ca3af" : getSliderColor(vSensitivity, 0.8, 20)
                   }}
                 />
               </div>
               <input
                 type="range"
-                min={0.8}
-                max={20}
-                step={getVSensitivityStep(vSensitivity)}
-                value={vSensitivity}
-                onChange={(e) => onVSensitivityChange(parseFloat(e.target.value))}
+                min="0"
+                max="100"
+                step="1"
+                value={vValueToSlider(vSensitivity)}
+                onChange={handleVSliderChange}
                 className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
                 disabled={isLocked}
               />
             </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-xs text-gray-500">0.8 mV</span>
-              <span className="text-xs text-gray-500">20 mV</span>
+            <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <span>20 mV</span>
+              <span>0.8 mV</span>
             </div>
+            {isVSensitivityDisabled && (
+              <p className="text-xs text-gray-500 mt-1">Adjust value to reactivate</p>
+            )}
           </div>
 
           <div className="mt-4 pt-2 border-t border-gray-100">

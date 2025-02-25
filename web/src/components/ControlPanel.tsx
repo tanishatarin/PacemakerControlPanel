@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Key, Lock, LockOpen, Pause } from 'lucide-react';
+import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
 import CircularControl from './CircularControl';
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
+import DDDSettings from './DDDSettings';
+import VVISettings from './VVISettings';
+import DOOSettings from './DOOSettings';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -117,6 +120,19 @@ const ControlPanel: React.FC = () => {
     }
   }, [aOutput, vOutput, selectedModeIndex, modes]);
 
+  // Handle DDD Settings changes
+  const handleDDDSettingsChange = (key: string, value: any) => {
+    setDddSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  // Handle VVI sensitivity change
+  const handleVVISensitivityChange = (value: number) => {
+    setVviSensitivity(value);
+  };
+
   // Handle mode navigation
   const handleModeNavigation = (direction: 'up' | 'down') => {
     resetAutoLockTimer();
@@ -227,318 +243,33 @@ const ControlPanel: React.FC = () => {
     setIsLocked(!isLocked);
   };
 
-  // Function to get slider color based on value
-  const getSliderColor = (value: number, min: number, max: number) => {
-    const percentage = ((value - min) / (max - min)) * 100;
-    if (percentage < 33) return '#4ade80'; // green
-    if (percentage < 66) return '#fbbf24'; // yellow
-    return '#ef4444'; // red
-  };
-
-  // Render the DDD Settings panel
-  const renderDDDSettings = () => {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="mb-4">
-          <h3 className="text-xl font-bold">DDD Settings</h3>
-        </div>
-        
-        <div className="space-y-4 flex-grow">
-          {/* A Sensitivity - Enabled */}
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-sm text-gray-700">A Sensitivity</span>
-              <span className="text-sm font-medium">{dddSettings.aSensitivity.toFixed(1)} mV</span>
-            </div>
-            <div className="relative">
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div 
-                  className="absolute h-full rounded-full transition-all duration-150 ease-out"
-                  style={{ 
-                    width: `${((dddSettings.aSensitivity - 0.4) / (10 - 0.4)) * 100}%`,
-                    backgroundColor: getSliderColor(dddSettings.aSensitivity, 0.4, 10)
-                  }}
-                />
-              </div>
-              <input
-                type="range"
-                min={0.4}
-                max={10}
-                step={0.1}
-                value={dddSettings.aSensitivity}
-                onChange={(e) => {
-                  if (!isLocked) {
-                    setDddSettings(prev => ({
-                      ...prev,
-                      aSensitivity: parseFloat(e.target.value)
-                    }));
-                  }
-                }}
-                className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-                disabled={isLocked}
-              />
-            </div>
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>0.4 mV</span>
-              <span>10 mV</span>
-            </div>
-          </div>
-          
-          {/* V Sensitivity - Enabled */}
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-sm text-gray-700">V Sensitivity</span>
-              <span className="text-sm font-medium">{dddSettings.vSensitivity.toFixed(1)} mV</span>
-            </div>
-            <div className="relative">
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div 
-                  className="absolute h-full rounded-full transition-all duration-150 ease-out"
-                  style={{ 
-                    width: `${((dddSettings.vSensitivity - 0.8) / (20 - 0.8)) * 100}%`,
-                    backgroundColor: getSliderColor(dddSettings.vSensitivity, 0.8, 20)
-                  }}
-                />
-              </div>
-              <input
-                type="range"
-                min={0.8}
-                max={20}
-                step={0.1}
-                value={dddSettings.vSensitivity}
-                onChange={(e) => {
-                  if (!isLocked) {
-                    setDddSettings(prev => ({
-                      ...prev,
-                      vSensitivity: parseFloat(e.target.value)
-                    }));
-                  }
-                }}
-                className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-                disabled={isLocked}
-              />
-            </div>
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>0.8 mV</span>
-              <span>20 mV</span>
-            </div>
-          </div>
-          
-          {/* Disabled controls */}
-          <div className="opacity-60 space-y-3">
-            {/* AV Delay */}
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700">AV Delay</span>
-                <span className="text-sm font-medium">{dddSettings.avDelay} ms</span>
-              </div>
-              <div className="relative">
-                <div className="h-2 bg-gray-100 rounded-full">
-                  <div 
-                    className="absolute h-full bg-gray-400 rounded-full"
-                    style={{ width: `${((dddSettings.avDelay - 20) / (300 - 20)) * 100}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={20}
-                  max={300}
-                  value={dddSettings.avDelay}
-                  className="absolute top-0 w-full h-2 opacity-0 cursor-not-allowed"
-                  disabled={true}
-                />
-              </div>
-            </div>
-            
-            {/* Upper Rate */}
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700">Upper Rate</span>
-                <span className="text-sm font-medium">{dddSettings.upperRate} ppm</span>
-              </div>
-              <div className="relative">
-                <div className="h-2 bg-gray-100 rounded-full">
-                  <div 
-                    className="absolute h-full bg-gray-400 rounded-full"
-                    style={{ width: `${((dddSettings.upperRate - 86) / (230 - 86)) * 100}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={86}
-                  max={230}
-                  value={dddSettings.upperRate}
-                  className="absolute top-0 w-full h-2 opacity-0 cursor-not-allowed"
-                  disabled={true}
-                />
-              </div>
-            </div>
-            
-            {/* PVARP */}
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700">PVARP</span>
-                <span className="text-sm font-medium">{dddSettings.pvarp} ms</span>
-              </div>
-              <div className="relative">
-                <div className="h-2 bg-gray-100 rounded-full">
-                  <div 
-                    className="absolute h-full bg-gray-400 rounded-full"
-                    style={{ width: `${((dddSettings.pvarp - 150) / (500 - 150)) * 100}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={150}
-                  max={500}
-                  value={dddSettings.pvarp}
-                  className="absolute top-0 w-full h-2 opacity-0 cursor-not-allowed"
-                  disabled={true}
-                />
-              </div>
-            </div>
-            
-            {/* A. Tracking */}
-            <div className="flex justify-between items-center py-1">
-              <span className="text-sm text-gray-700">A. Tracking</span>
-              <button
-                className={`px-3 py-1 rounded-full text-sm ${
-                  dddSettings.aTracking ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'
-                } cursor-not-allowed`}
-                disabled={true}
-              >
-                {dddSettings.aTracking ? 'On' : 'Off'}
-              </button>
-            </div>
-
-            {/* Settings */}
-            <div className="flex justify-between items-center py-1">
-              <span className="text-sm text-gray-700">Settings</span>
-              <select
-                value={dddSettings.settings}
-                className="px-3 py-1 rounded-lg bg-gray-100 text-gray-800 text-sm cursor-not-allowed"
-                disabled={true}
-              >
-                <option value="Automatic">Automatic</option>
-                <option value="Manual">Manual</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-auto pt-2 border-t border-gray-100">
-          <p className="text-xs text-gray-500">Only A and V sensitivity can be adjusted. Other settings require provider access.</p>
-        </div>
-      </div>
-    );
-  };
-
-  // Render the VVI Settings panel
-  const renderVVISettings = () => {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="mb-4">
-          <h3 className="text-xl font-bold">VVI Settings</h3>
-        </div>
-        
-        <div className="flex-grow">
-          {/* V Sensitivity - Enabled */}
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-sm text-gray-700">V Sensitivity</span>
-              <span className="text-sm font-medium">{vviSensitivity.toFixed(1)} mV</span>
-            </div>
-            <div className="relative">
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div 
-                  className="absolute h-full rounded-full transition-all duration-150 ease-out"
-                  style={{ 
-                    width: `${((vviSensitivity - 0.8) / (20 - 0.8)) * 100}%`,
-                    backgroundColor: getSliderColor(vviSensitivity, 0.8, 20)
-                  }}
-                />
-              </div>
-              <input
-                type="range"
-                min={0.8}
-                max={20}
-                step={0.1}
-                value={vviSensitivity}
-                onChange={(e) => {
-                  if (!isLocked) {
-                    setVviSensitivity(parseFloat(e.target.value));
-                  }
-                }}
-                className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-                disabled={isLocked}
-              />
-            </div>
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>0.8 mV</span>
-              <span>20 mV</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-auto pt-2 border-t border-gray-100">
-          <p className="text-sm font-medium">VVI Mode (Ventricular Inhibited)</p>
-          <p className="text-xs text-gray-500 mt-1">Paces the ventricle when no natural ventricular activity is detected. Commonly used for atrial fibrillation or other atrial arrhythmias.</p>
-        </div>
-      </div>
-    );
-  };
-
-  // Render the DOO Settings panel
-  const renderDOOSettings = () => {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="mb-4">
-          <h3 className="text-xl font-bold text-red-600">DOO Emergency Mode</h3>
-        </div>
-        
-        <div className="flex-grow space-y-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <h3 className="text-red-600 font-medium mb-1">Asynchronous Pacing Active</h3>
-            <p className="text-sm text-red-700">
-              DOO mode is an emergency asynchronous pacing mode that paces both chambers at fixed rates.
-            </p>
-          </div>
-          
-          <div className="mt-2">
-            <p className="text-sm text-gray-700">Emergency settings have been applied:</p>
-            <ul className="mt-2 space-y-2 text-sm">
-              <li className="flex justify-between">
-                <span>Rate:</span>
-                <span className="font-medium">80 ppm</span>
-              </li>
-              <li className="flex justify-between">
-                <span>A. Output:</span>
-                <span className="font-medium">20.0 mA</span>
-              </li>
-              <li className="flex justify-between">
-                <span>V. Output:</span>
-                <span className="font-medium">25.0 mA</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-auto pt-2 border-t border-gray-100">
-          <p className="text-sm font-medium">When to use DOO mode:</p>
-          <p className="text-xs text-gray-500">For emergency situations when patient's underlying heart rate isn't visible or during rapid decrease in blood pressure.</p>
-        </div>
-      </div>
-    );
-  };
-
-  // Render the appropriate mode selection or settings panel
+  // Render the appropriate mode panel
   const renderModePanel = () => {
     if (showDDDSettings) {
-      return renderDDDSettings();
+      return (
+        <DDDSettings
+          settings={dddSettings}
+          onSettingsChange={handleDDDSettingsChange}
+          onBack={handleLeftArrowPress}
+          isLocked={isLocked}
+        />
+      );
     } else if (showVVISettings) {
-      return renderVVISettings();
+      return (
+        <VVISettings
+          vSensitivity={vviSensitivity}
+          onVSensitivityChange={handleVVISensitivityChange}
+          onBack={handleLeftArrowPress}
+          isLocked={isLocked}
+        />
+      );
     } else if (showDOOSettings) {
-      return renderDOOSettings();
+      return (
+        <DOOSettings
+          onBack={handleLeftArrowPress}
+          isLocked={isLocked}
+        />
+      );
     } else {
       // Normal mode selection grid
       return (
