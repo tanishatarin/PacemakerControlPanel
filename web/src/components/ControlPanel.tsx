@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
-import CircularControl from './CircularControl';
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
+import EmergencyButton from './EmergencyButton';
+import ModeSelector from './ModeSelector';
+import ControlButtons from './ControlButtons';
+import MainControls from './MainControls';
+import ECGVisualizer from './ECGVisualizer';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -133,6 +136,27 @@ const ControlPanel: React.FC = () => {
     setVviSensitivity(value);
   };
 
+  // Add this function that directly activates a mode
+  const activateMode = (modeIndex: number) => {
+    setSelectedModeIndex(modeIndex);
+    const newMode = modes[modeIndex];
+    
+    // Check if mode requires special settings screen
+    if (newMode === 'DDD') {
+      setShowDDDSettings(true);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'VVI') {
+      setShowVVISettings(true);
+      setShowDDDSettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'DOO') {
+      setShowDOOSettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+    }
+  };
+
   // Handle mode navigation
   const handleModeNavigation = (direction: 'up' | 'down') => {
     resetAutoLockTimer();
@@ -143,9 +167,15 @@ const ControlPanel: React.FC = () => {
     }
     
     if (direction === 'up') {
-      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
+      const newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
+      setPendingModeIndex(newIndex);
+      // Also update selectedModeIndex to ensure header updates
+      setSelectedModeIndex(newIndex);
     } else {
-      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
+      const newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
+      setPendingModeIndex(newIndex);
+      // Also update selectedModeIndex to ensure header updates
+      setSelectedModeIndex(newIndex);
     }
   };
 
@@ -166,28 +196,8 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Otherwise, apply the selected mode and show appropriate settings
-    setSelectedModeIndex(pendingModeIndex);
-    const newMode = modes[pendingModeIndex];
-    
-    // Check if mode requires special settings screen
-    if (newMode === 'DDD') {
-      setShowDDDSettings(true);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
-    } else if (newMode === 'VVI') {
-      setShowVVISettings(true);
-      setShowDDDSettings(false);
-      setShowDOOSettings(false);
-    } else if (newMode === 'DOO') {
-      setShowDOOSettings(true);
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-    } else {
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
-    }
+    // Otherwise, activate the pending mode
+    activateMode(pendingModeIndex);
     
     // If exiting async message mode
     if (showAsyncMessage) {
@@ -271,24 +281,21 @@ const ControlPanel: React.FC = () => {
         />
       );
     } else {
-      // Normal mode selection grid
+      // Use updated ModeSelector component with new props
       return (
-        <div className="grid grid-cols-2 gap-3">
-          {modes.map((mode, index) => (
-            <button
-              key={mode}
-              className={`py-2.5 px-6 rounded-2xl text-sm font-medium transition-all
-                ${index === pendingModeIndex 
-                  ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                }
-                ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
-              `}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
+        <ModeSelector
+          modes={modes}
+          pendingModeIndex={pendingModeIndex}
+          selectedModeIndex={selectedModeIndex} // Pass current selected mode
+          isLocked={isLocked}
+          onModeSelect={(index) => {
+            setPendingModeIndex(index);
+            // IMPORTANT FIX: Also update the selectedModeIndex immediately
+            // This ensures the header updates as soon as a mode is selected
+            setSelectedModeIndex(index);
+          }}
+          onModeActivate={activateMode}
+        />
       );
     }
   };
@@ -305,50 +312,22 @@ const ControlPanel: React.FC = () => {
       />
 
       {/* Emergency Mode Button */}
-      <button
+      <EmergencyButton 
         onClick={handleEmergencyMode}
-        className="w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors"
-      >
-        DOO Emergency Mode
-      </button>
+        isLocked={isLocked}
+      />
 
       {/* Main Controls */}
-      <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
-        <CircularControl
-          title="Rate"
-          value={rate}
-          unit="ppm"
-          onChange={setRate}
-          isLocked={isLocked}
-          minValue={30}
-          maxValue={200}
-          onLockError={handleLockError}
-        />
-        
-        <CircularControl
-          title="A. Output"
-          value={aOutput}
-          unit="mA"
-          onChange={setAOutput}
-          isLocked={isLocked}
-          minValue={0}
-          maxValue={20}
-          onLockError={handleLockError}
-          isDimmed={aOutput === 0}
-        />
-        
-        <CircularControl
-          title="V. Output"
-          value={vOutput}
-          unit="mA"
-          onChange={setVOutput}
-          isLocked={isLocked}
-          minValue={0}
-          maxValue={25}
-          onLockError={handleLockError}
-          isDimmed={vOutput === 0}
-        />
-      </div>
+      <MainControls
+        rate={rate}
+        aOutput={aOutput}
+        vOutput={vOutput}
+        isLocked={isLocked}
+        onRateChange={setRate}
+        onAOutputChange={setAOutput}
+        onVOutputChange={setVOutput}
+        onLockError={handleLockError}
+      />
 
       {/* Mode Selection and Control Buttons */}
       <div className="flex gap-4">
@@ -356,40 +335,14 @@ const ControlPanel: React.FC = () => {
           {renderModePanel()}
         </div>
 
-        <div className="flex flex-col gap-3">
-          <button 
-            onClick={handleLockToggle}
-            className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
-          >
-            <Key className="w-5 h-5 text-gray-600" />
-          </button>
-          <button 
-            onClick={handleLeftArrowPress}
-            className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
-          >
-            <ChevronLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <button 
-            onClick={() => handleModeNavigation('up')}
-            className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
-          >
-            <ChevronUp className="w-5 h-5 text-gray-600" />
-          </button>
-          <button 
-            onClick={() => handleModeNavigation('down')}
-            className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
-          >
-            <ChevronDown className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            onMouseDown={handlePauseStart}
-            onMouseUp={handlePauseEnd}
-            onMouseLeave={handlePauseEnd}
-            className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
-          >
-            <Pause className="w-5 h-5 text-gray-600" />
-          </button>
-        </div>
+        <ControlButtons
+          onLockToggle={handleLockToggle}
+          onBackPress={handleLeftArrowPress}
+          onModeUp={() => handleModeNavigation('up')}
+          onModeDown={() => handleModeNavigation('down')}
+          onPauseStart={handlePauseStart}
+          onPauseEnd={handlePauseEnd}
+        />
       </div>
 
       {/* Notifications */}

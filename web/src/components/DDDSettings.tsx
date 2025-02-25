@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 
+// Interface for the DDD Settings component
 interface DDDSettingsProps {
   settings: {
     aSensitivity: number;
@@ -16,6 +17,66 @@ interface DDDSettingsProps {
   isLocked: boolean;
 }
 
+// Interface for the DDD Mode Control component
+interface DDDModeControlProps {
+  title: string;
+  value: number;
+  unit: string;
+  onChange: (value: number) => void;
+  minValue: number;
+  maxValue: number;
+  showMinMax?: boolean;
+  disabled?: boolean;
+}
+
+// DDDModeControl component integrated into the file
+const DDDModeControl: React.FC<DDDModeControlProps> = ({
+  title,
+  value,
+  unit,
+  onChange,
+  minValue,
+  maxValue,
+  showMinMax = true,
+  disabled = false
+}) => {
+  const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
+  
+  return (
+    <div className={`mb-2 ${disabled ? 'opacity-60' : ''}`}>
+      <div className="flex justify-between mb-1">
+        <span className="text-sm text-gray-700">{title}</span>
+        <span className="text-sm font-medium">{value.toFixed(1)} {unit}</span>
+      </div>
+      <div className="relative">
+        <div className="h-2 bg-gray-100 rounded-full">
+          <div 
+            className={`absolute h-full rounded-full transition-all duration-150 ease-out ${disabled ? 'bg-gray-400' : 'bg-blue-500'}`}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={minValue}
+          max={maxValue}
+          value={value}
+          step={0.1}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className={`absolute top-0 w-full h-2 opacity-0 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+          disabled={disabled}
+        />
+      </div>
+      {showMinMax && (
+        <div className="flex justify-between mt-1 text-xs text-gray-500">
+          <span>{minValue} {unit}</span>
+          <span>{maxValue} {unit}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Main DDDSettings component
 const DDDSettings: React.FC<DDDSettingsProps> = ({
   settings,
   onSettingsChange,
@@ -99,7 +160,6 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   useEffect(() => {
     if (isASensitivityDisabled || isVSensitivityDisabled) {
       // If either sensitivity is 0, make other changes that happen in ASYNC mode
-      // This could include disabling other settings or showing different UI elements
       console.log("ASYNC mode active");
     }
   }, [isASensitivityDisabled, isVSensitivityDisabled]);
@@ -191,79 +251,40 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
             )}
           </div>
           
-          {/* Disabled controls - same as before */}
+          {/* Using the integrated DDDModeControl for other controls */}
           <div className="opacity-60 space-y-3">
             {/* AV Delay */}
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700">AV Delay</span>
-                <span className="text-sm font-medium">{settings.avDelay} ms</span>
-              </div>
-              <div className="relative">
-                <div className="h-2 bg-gray-100 rounded-full">
-                  <div 
-                    className="absolute h-full bg-gray-400 rounded-full"
-                    style={{ width: `${((settings.avDelay - 20) / (300 - 20)) * 100}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={20}
-                  max={300}
-                  value={settings.avDelay}
-                  className="absolute top-0 w-full h-2 opacity-0 cursor-not-allowed"
-                  disabled={true}
-                />
-              </div>
-            </div>
+            <DDDModeControl
+              title="AV Delay"
+              value={settings.avDelay}
+              unit="ms"
+              onChange={(value) => handleChange('avDelay', value)}
+              minValue={20}
+              maxValue={300}
+              disabled={true}
+            />
             
             {/* Upper Rate */}
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700">Upper Rate</span>
-                <span className="text-sm font-medium">{settings.upperRate} ppm</span>
-              </div>
-              <div className="relative">
-                <div className="h-2 bg-gray-100 rounded-full">
-                  <div 
-                    className="absolute h-full bg-gray-400 rounded-full"
-                    style={{ width: `${((settings.upperRate - 86) / (230 - 86)) * 100}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={86}
-                  max={230}
-                  value={settings.upperRate}
-                  className="absolute top-0 w-full h-2 opacity-0 cursor-not-allowed"
-                  disabled={true}
-                />
-              </div>
-            </div>
+            <DDDModeControl
+              title="Upper Rate"
+              value={settings.upperRate}
+              unit="ppm"
+              onChange={(value) => handleChange('upperRate', value)}
+              minValue={86}
+              maxValue={230}
+              disabled={true}
+            />
             
             {/* PVARP */}
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700">PVARP</span>
-                <span className="text-sm font-medium">{settings.pvarp} ms</span>
-              </div>
-              <div className="relative">
-                <div className="h-2 bg-gray-100 rounded-full">
-                  <div 
-                    className="absolute h-full bg-gray-400 rounded-full"
-                    style={{ width: `${((settings.pvarp - 150) / (500 - 150)) * 100}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={150}
-                  max={500}
-                  value={settings.pvarp}
-                  className="absolute top-0 w-full h-2 opacity-0 cursor-not-allowed"
-                  disabled={true}
-                />
-              </div>
-            </div>
+            <DDDModeControl
+              title="PVARP"
+              value={settings.pvarp}
+              unit="ms"
+              onChange={(value) => handleChange('pvarp', value)}
+              minValue={150}
+              maxValue={500}
+              disabled={true}
+            />
             
             {/* A. Tracking */}
             <div className="flex justify-between items-center py-1">
