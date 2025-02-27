@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createRequire } from 'module';
 
 // Create a require function for importing CommonJS modules
