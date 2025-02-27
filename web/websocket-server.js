@@ -1,14 +1,20 @@
-const WebSocket = require('ws');
-const Gpio = require('onoff').Gpio;
+import { WebSocketServer } from 'ws';
+import { createRequire } from 'module';
+
+// Create a require function for importing CommonJS modules
+const require = createRequire(import.meta.url);
 
 // Set up WebSocket server
-const wss = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocketServer({ port: 8080 });
 console.log('WebSocket server running on port 8080');
 
 // Set up GPIO pins - using the same pins as in your Python reference code
 let clkPin, dtPin, buttonPin;
 
 try {
+  // Try to import the 'onoff' module
+  const Gpio = require('onoff').Gpio;
+  
   // GPIO 27 for CLK, GPIO 22 for DT, GPIO 25 for button
   clkPin = new Gpio(27, 'in', 'both');
   dtPin = new Gpio(22, 'in', 'both');
@@ -83,7 +89,7 @@ wss.on('connection', (ws) => {
   // Handle client messages
   ws.on('message', (message) => {
     try {
-      const data = JSON.parse(message);
+      const data = JSON.parse(message.toString());
       console.log('Received:', data);
       
       // Handle manual value update from client
