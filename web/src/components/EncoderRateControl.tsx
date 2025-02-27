@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const EncoderRateControl = ({ 
+interface EncoderRateControlProps {
+  onRateChange: (value: number) => void;
+  isLocked?: boolean;
+  onLockError?: () => void;
+  initialRate?: number;
+  minRate?: number;
+  maxRate?: number;
+}
+
+const EncoderRateControl: React.FC<EncoderRateControlProps> = ({ 
   onRateChange, 
   isLocked = false, 
   onLockError = () => {},
@@ -11,10 +20,92 @@ const EncoderRateControl = ({
   const [rate, setRate] = useState(initialRate);
   const [isButtonPressed, setIsButtonPressed] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
-  const rotationTimer = useRef(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const ws = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
   
-  // Simulate encoder behavior
-  const handleRotate = (direction) => {
+  // Connect to WebSocket server
+  const connectWebSocket = () => {
+    // Clean up any existing connection
+    if (ws.current) {
+      ws.current.close();
+    }
+    
+    // Update status
+    setConnectionStatus('connecting');
+    
+    // Create new WebSocket connection
+    const serverUrl = 'ws://localhost:8080'; // Change to your server's address if needed
+    const newWs = new WebSocket(serverUrl);
+    ws.current = newWs;
+    
+    // WebSocket event handlers
+    newWs.onopen = () => {
+      console.log('Connected to encoder WebSocket server');
+      setConnectionStatus('connected');
+    };
+    
+    newWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'value' && !isLocked) {
+          if (data.value !== rate) {
+            setRate(data.value);
+            onRateChange(data.value);
+            
+            // Visual feedback for rotation
+            setIsRotating(true);
+            setTimeout(() => setIsRotating(false), 300);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+    
+    newWs.onclose = () => {
+      console.log('Disconnected from encoder WebSocket server');
+      setConnectionStatus('disconnected');
+      
+      // Automatically try to reconnect
+      if (reconnectTimerRef.current === null) {
+        reconnectTimerRef.current = window.setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connectWebSocket();
+        }, 5000); // Try to reconnect after 5 seconds
+      }
+    };
+    
+    newWs.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      newWs.close();
+    };
+  };
+  
+  // Send value to WebSocket server
+  const sendValueToServer = (newValue: number) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'setValue', value: newValue }));
+    }
+  };
+  
+  // Initialize WebSocket connection
+  useEffect(() => {
+    connectWebSocket();
+    
+    // Clean up on component unmount
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+    };
+  }, []);
+  
+  // Simulate encoder rotation (for UI only)
+  const handleRotate = (direction: number) => {
     if (isLocked) {
       onLockError();
       return;
@@ -22,38 +113,30 @@ const EncoderRateControl = ({
     
     setIsRotating(true);
     
-    setRate(prevRate => {
-      // Calculate new rate based on current rate and direction
-      let newRate;
-      // Implement variable step size similar to CircularControl
-      if (prevRate < 50) {
-        newRate = prevRate + (direction * 5);
-      } else if (prevRate < 100) {
-        newRate = prevRate + (direction * 2);
-      } else if (prevRate < 170) {
-        newRate = prevRate + (direction * 5);
-      } else {
-        newRate = prevRate + (direction * 6);
-      }
-      
-      // Clamp between min and max
-      newRate = Math.max(minRate, Math.min(maxRate, newRate));
-      
-      // Notify parent component
-      onRateChange(newRate);
-      
-      return newRate;
-    });
-    
-    // Clear previous timer if any
-    if (rotationTimer.current) {
-      clearTimeout(rotationTimer.current);
+    // Calculate new rate based on current rate and direction
+    let newRate;
+    if (rate < 50) {
+      newRate = rate + (direction * 5);
+    } else if (rate < 100) {
+      newRate = rate + (direction * 2);
+    } else if (rate < 170) {
+      newRate = rate + (direction * 5);
+    } else {
+      newRate = rate + (direction * 6);
     }
     
-    // Set a timer to turn off rotation indicator
-    rotationTimer.current = setTimeout(() => {
-      setIsRotating(false);
-    }, 300);
+    // Clamp between min and max
+    newRate = Math.max(minRate, Math.min(maxRate, newRate));
+    
+    // Update local state
+    setRate(newRate);
+    onRateChange(newRate);
+    
+    // Send to server
+    sendValueToServer(newRate);
+    
+    // Reset rotation visual feedback
+    setTimeout(() => setIsRotating(false), 300);
   };
   
   // Handle button press (reset to 30)
@@ -66,29 +149,22 @@ const EncoderRateControl = ({
     setIsButtonPressed(true);
     
     // Reset to 30 (as in the Python code)
-    setRate(30);
-    onRateChange(30);
+    const resetValue = 30;
+    setRate(resetValue);
+    onRateChange(resetValue);
     
-    // Reset button state after a short delay
-    setTimeout(() => {
-      setIsButtonPressed(false);
-    }, 300);
+    // Send to server
+    sendValueToServer(resetValue);
+    
+    // Reset button visual state after a short delay
+    setTimeout(() => setIsButtonPressed(false), 300);
   };
   
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (rotationTimer.current) {
-        clearTimeout(rotationTimer.current);
-      }
-    };
-  }, []);
-  
-  // Map rate to percentage for UI (similar to original CircularControl)
+  // Map rate to percentage for UI
   const percentage = ((rate - minRate) / (maxRate - minRate)) * 100;
   
   // Get color based on value
-  const getColor = (value) => {
+  const getColor = (value: number) => {
     const percentage = (value - minRate) / (maxRate - minRate) * 100;
     if (percentage < 33) return '#4ade80'; // green
     if (percentage < 66) return '#fbbf24'; // yellow
@@ -108,7 +184,7 @@ const EncoderRateControl = ({
   const angleRange = endAngle - startAngle;
   
   // Calculate the SVG path for the arc
-  const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
+  const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
     const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
     return {
       x: centerX + (radius * Math.cos(angleInRadians)),
@@ -116,7 +192,7 @@ const EncoderRateControl = ({
     };
   };
 
-  const createArc = (x, y, radius, startAngle, endAngle) => {
+  const createArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
     const start = polarToCartesian(x, y, radius, endAngle);
     const end = polarToCartesian(x, y, radius, startAngle);
     const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
@@ -143,8 +219,14 @@ const EncoderRateControl = ({
       <div className="flex flex-col">
         <div className="flex items-center mb-4">
           <div className="flex-1 pl-4">
-            <h2 className="text-xl text-gray-800">Rate (Pin 27/22)</h2>
-            <p className="text-sm text-gray-500">Button Pin: 25</p>
+            <div className="flex items-center">
+              <h2 className="text-xl text-gray-800">Rate</h2>
+              <div className={`ml-2 w-3 h-3 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-green-500' : 
+                connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+              }`} />
+            </div>
+            <p className="text-sm text-gray-500">CLK: GPIO27, DT: GPIO22, BTN: GPIO25</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="relative w-24 h-24">
@@ -186,7 +268,7 @@ const EncoderRateControl = ({
                   stroke={color}
                   strokeWidth={stroke}
                   strokeLinecap="round"
-                  className={`transition-all duration-150 ease-out ${isRotating ? 'opacity-80' : ''}`}
+                  className={`transition-all duration-150 ease-out ${isRotating ? 'animate-pulse' : ''}`}
                 />
                 
                 {/* Current value */}
@@ -213,10 +295,11 @@ const EncoderRateControl = ({
       
       <div className="px-4">
         <div className="flex justify-between items-center mb-2">
-          <label className="block text-sm text-gray-600">Simulate Rotary Encoder:</label>
+          <label className="block text-sm text-gray-600">Manual Control:</label>
           <button 
             onClick={handleButtonPress}
-            className={`ml-2 px-3 py-1 rounded-lg ${isButtonPressed ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'} transition-colors`}
+            className={`ml-2 px-3 py-1 rounded-lg ${isButtonPressed ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'} transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLocked}
           >
             Reset to 30
           </button>
@@ -225,13 +308,20 @@ const EncoderRateControl = ({
         <div className="flex justify-between items-center mb-4">
           <button
             onClick={() => handleRotate(-1)}
-            className="px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+            className={`px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLocked}
           >
             ◀ Rotate Left
           </button>
+          <div className="text-xs text-gray-500">
+            {connectionStatus === 'connected' ? 'Connected to Hardware' : 
+             connectionStatus === 'connecting' ? 'Connecting to Hardware...' : 
+             'Hardware Disconnected - Retrying...'}
+          </div>
           <button
             onClick={() => handleRotate(1)}
-            className="px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+            className={`px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={isLocked}
           >
             Rotate Right ▶
           </button>
@@ -261,16 +351,11 @@ const EncoderRateControl = ({
               const newValue = parseInt(e.target.value);
               setRate(newValue);
               onRateChange(newValue);
+              sendValueToServer(newValue);
             }}
             className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
             disabled={isLocked}
           />
-        </div>
-        
-        <div className="mt-4 text-sm text-gray-500">
-          <p>• CLK connected to GPIO27, DT connected to GPIO22</p>
-          <p>• Button connected to GPIO25</p>
-          <p>• Range: {minRate}-{maxRate}, with reset to 30</p>
         </div>
       </div>
     </div>

@@ -358,17 +358,16 @@
 
 // export default ControlPanel;
 
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
 import CircularControl from './CircularControl';
-import EncoderRateControl from './EncoderRateControl'; // Import the new component
+import EncoderRateControl from './EncoderRateControl'; // Import the hardware-connected component
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
-import ECGVisualizer from './ECGVisualizer'; // Import ECG component
+import ECGVisualizer from './ECGVisualizer';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -675,7 +674,7 @@ const ControlPanel: React.FC = () => {
         DOO Emergency Mode
       </button>
 
-      {/* Main Controls with Encoder-based Rate Control */}
+      {/* Main Controls with hardware-connected EncoderRateControl for Rate */}
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
         {/* Replace CircularControl with EncoderRateControl for Rate */}
         <EncoderRateControl
