@@ -60,37 +60,37 @@ try {
   let mockClkState = 0;
   let simulationDirection = 1; // 1 for clockwise, -1 for counter-clockwise
   
-  setInterval(() => {
-    // Alternate direction every 10 seconds
-    if (Math.random() > 0.5) {
-      simulationDirection = -simulationDirection;
-    }
+//   setInterval(() => {
+//     // Alternate direction every 10 seconds
+//     if (Math.random() > 0.5) {
+//       simulationDirection = -simulationDirection;
+//     }
     
-    // Simulate a single encoder step
-    mockClkState = 1 - mockClkState; // Toggle between 0 and 1
-    clkPin.trigger(mockClkState);
+//     // Simulate a single encoder step
+//     mockClkState = 1 - mockClkState; // Toggle between 0 and 1
+//     clkPin.trigger(mockClkState);
     
-    // For clockwise rotation, DT changes after CLK
-    // For counter-clockwise, DT changes before CLK
-    if (simulationDirection === 1) {
-      // Simulate clockwise rotation
-      dtPin.trigger(0); // DT opposite to CLK for clockwise
-      console.log('Simulated encoder clockwise rotation');
-    } else {
-      // Simulate counter-clockwise rotation
-      dtPin.trigger(1); // DT same as CLK for counter-clockwise
-      console.log('Simulated encoder counter-clockwise rotation');
-    }
-  }, 2000);
+//     // For clockwise rotation, DT changes after CLK
+//     // For counter-clockwise, DT changes before CLK
+//     if (simulationDirection === 1) {
+//       // Simulate clockwise rotation
+//       dtPin.trigger(0); // DT opposite to CLK for clockwise
+//       console.log('Simulated encoder clockwise rotation');
+//     } else {
+//       // Simulate counter-clockwise rotation
+//       dtPin.trigger(1); // DT same as CLK for counter-clockwise
+//       console.log('Simulated encoder counter-clockwise rotation');
+//     }
+//   }, 2000);
   
-  // Simulate button press every 15 seconds
-  setInterval(() => {
-    buttonPin.trigger(1);
-    console.log('Simulated button press');
-    setTimeout(() => {
-      buttonPin.trigger(0);
-    }, 200); // Release button after 200ms
-  }, 15000);
+//   // Simulate button press every 15 seconds
+//   setInterval(() => {
+//     buttonPin.trigger(1);
+//     console.log('Simulated button press');
+//     setTimeout(() => {
+//       buttonPin.trigger(0);
+//     }, 200); // Release button after 200ms
+//   }, 15000);
 }
 
 // Encoder state variables
