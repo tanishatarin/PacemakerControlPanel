@@ -22,7 +22,7 @@ try {
   console.log('GPIO pins initialized successfully');
 } catch (error) {
   console.error('Error initializing GPIO pins:', error);
-  console.log('Running in simulation mode');
+  console.log('Running in mock mode (no simulated events)');
   // Create mock GPIO for testing without hardware
   class MockGpio {
     constructor() {
@@ -56,28 +56,18 @@ try {
   dtPin = new MockGpio();
   buttonPin = new MockGpio();
   
-  // For testing: simulate encoder rotation every 5 seconds
-  let mockValue = 1;
-  setInterval(() => {
-    mockValue = 1 - mockValue; // Toggle between 0 and 1
-    clkPin.trigger(mockValue);
-    dtPin.trigger(mockValue === 1 ? 0 : 1); // Opposite for clockwise rotation
-    console.log('Simulated encoder rotation, CLK:', mockValue);
-  }, 5000);
-  
-  // Simulate button press every 15 seconds
-  setInterval(() => {
-    buttonPin.trigger(1);
-    console.log('Simulated button press');
-    setTimeout(() => {
-      buttonPin.trigger(0);
-    }, 200); // Release button after 200ms
-  }, 15000);
+  // No automatic simulations - only manual control will work
+  console.log('Waiting for manual input or hardware signals...');
 }
 
 // Encoder state variables
 let value = 30; // Initial value as in your Python code
 let clkLastState = clkPin.readSync();
+let dtLastState = dtPin.readSync();
+let lastEncoderTime = Date.now();
+
+// Debounce time (milliseconds)
+const DEBOUNCE_MS = 10;
 
 // WebSocket connections management
 wss.on('connection', (ws) => {
@@ -116,42 +106,45 @@ function broadcastValue() {
   });
 }
 
-// Variable step size similar to your CircularControl component
-function getStepSize(value) {
-  if (value < 50) return 5;
-  if (value < 100) return 2;
-  if (value < 170) return 5;
-  return 6;
-}
-
-// Watch for encoder CLK pin changes
+// Watch for encoder CLK pin changes with improved direction detection
 clkPin.watch((err, clkState) => {
   if (err) {
     console.error('Error with CLK pin:', err);
     return;
   }
   
+  // Check if enough time has passed since last event (debounce)
+  const now = Date.now();
+  if (now - lastEncoderTime < DEBOUNCE_MS) {
+    return;
+  }
+  lastEncoderTime = now;
+  
+  // Read current DT pin state
+  const dtState = dtPin.readSync();
+  
   // Only process when CLK state changes
   if (clkState !== clkLastState) {
-    // Read DT pin to determine direction
-    const dtState = dtPin.readSync();
-    
-    if (clkState !== dtState) {
-      // Clockwise rotation - increase value
-      value = Math.min(200, value + getStepSize(value));
-      console.log('Clockwise, new value:', value);
-    } else {
-      // Counter-clockwise rotation - decrease value
-      value = Math.max(30, value - getStepSize(value));
-      console.log('Counter-clockwise, new value:', value);
+    if (clkState === 0) {  // Falling edge of CLK
+      // Determine direction based on DT state
+      if (dtState !== clkState) {
+        // DT is different from CLK - this is clockwise (right)
+        value = Math.min(200, value + 1);  // Always increment by 1
+        console.log('Clockwise (right), new value:', value);
+      } else {
+        // DT is same as CLK - this is counter-clockwise (left)
+        value = Math.max(30, value - 1);  // Always decrement by 1
+        console.log('Counter-clockwise (left), new value:', value);
+      }
+      
+      // Broadcast new value to all clients
+      broadcastValue();
     }
-    
-    // Broadcast new value to all clients
-    broadcastValue();
   }
   
-  // Update last CLK state
+  // Update last states
   clkLastState = clkState;
+  dtLastState = dtState;
 });
 
 // Watch for button presses
