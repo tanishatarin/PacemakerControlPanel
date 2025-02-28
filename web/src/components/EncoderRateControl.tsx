@@ -9,6 +9,10 @@ interface EncoderRateControlProps {
   maxRate?: number;
 }
 
+// Shared WebSocket instance to prevent multiple connections
+let sharedWebSocket: WebSocket | null = null;
+let wsConnectionAttempts = 0;
+
 const EncoderRateControl: React.FC<EncoderRateControlProps> = ({ 
   onRateChange, 
   isLocked = false, 
@@ -23,152 +27,124 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
   const [rotationDirection, setRotationDirection] = useState<'left' | 'right' | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   
-  const ws = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
-  const heartbeatTimerRef = useRef<number | null>(null);
+  // Use ref for values that don't trigger re-renders
   const lastValueRef = useRef(initialRate);
-  const connectionsAttempts = useRef(0);
+  const reconnectTimerRef = useRef<number | null>(null);
   
-  // Connect to WebSocket server with improved reliability
-  const connectWebSocket = () => {
-    // Skip if we're already trying to connect
-    if (connectionStatus === 'connecting' && ws.current) {
+  // Connect or reuse WebSocket
+  const setupWebSocket = () => {
+    if (sharedWebSocket !== null && sharedWebSocket.readyState === WebSocket.OPEN) {
+      // Reuse existing connection
+      setConnectionStatus('connected');
       return;
     }
     
-    // Clean up any existing connection
-    if (ws.current) {
-      ws.current.close();
-      ws.current = null;
+    // Clean up any existing connections
+    if (sharedWebSocket && (sharedWebSocket.readyState === WebSocket.OPEN || sharedWebSocket.readyState === WebSocket.CONNECTING)) {
+      console.log('Closing existing WebSocket');
+      sharedWebSocket.close();
+      sharedWebSocket = null;
     }
     
-    // Update status
+    // Delay based on connection attempts (simple exponential backoff)
+    const delay = Math.min(wsConnectionAttempts * 500, 3000);
+    wsConnectionAttempts++;
+    
+    // Update UI state
     setConnectionStatus('connecting');
-    connectionsAttempts.current++;
     
-    // Calculate backoff delay based on connection attempts
-    const backoffDelay = Math.min(connectionsAttempts.current * 1000, 5000);
-    
-    // Create new WebSocket connection with retry backoff 
     setTimeout(() => {
       try {
-        const serverUrl = 'ws://localhost:8080'; // Change to your server's address if needed
-        const newWs = new WebSocket(serverUrl);
-        ws.current = newWs;
+        // Create new connection
+        const serverUrl = 'ws://localhost:8080';
+        const socket = new WebSocket(serverUrl);
+        sharedWebSocket = socket;
         
-        // WebSocket event handlers
-        newWs.onopen = () => {
-          console.log('Connected to encoder WebSocket server');
+        // Handle connection events
+        socket.onopen = () => {
+          console.log('WebSocket connected');
           setConnectionStatus('connected');
-          connectionsAttempts.current = 0; // Reset attempts counter on success
-          
-          // Start sending heartbeats to keep connection alive
-          if (heartbeatTimerRef.current) {
-            clearInterval(heartbeatTimerRef.current);
-          }
-          
-          heartbeatTimerRef.current = window.setInterval(() => {
-            if (newWs.readyState === WebSocket.OPEN) {
-              newWs.send(JSON.stringify({ type: 'ping' }));
-            }
-          }, 4000) as unknown as number;
+          wsConnectionAttempts = 0; // Reset counter on successful connection
         };
         
-        newWs.onmessage = (event) => {
+        socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            
             if (data.type === 'value' && !isLocked) {
               const newValue = data.value;
+              // Only update if value changed
               if (newValue !== lastValueRef.current) {
-                // Determine rotation direction based on value change
                 const direction = newValue > lastValueRef.current ? 'right' : 'left';
                 setRotationDirection(direction);
-                
-                // Update rate and provide visual feedback
                 setRate(newValue);
                 onRateChange(newValue);
                 lastValueRef.current = newValue;
                 
-                // Visual feedback for rotation
+                // Visual feedback
                 setIsRotating(true);
                 setTimeout(() => {
                   setIsRotating(false);
                   setRotationDirection(null);
                 }, 200);
               }
-            } else if (data.type === 'pong') {
-              // Received heartbeat response, connection is good
             }
           } catch (error) {
             console.error('Error parsing WebSocket message:', error);
           }
         };
         
-        newWs.onclose = (event) => {
-          console.log(`WebSocket closed with code ${event.code}`);
+        socket.onclose = () => {
+          console.log('WebSocket disconnected');
           setConnectionStatus('disconnected');
           
-          // Clear heartbeat timer
-          if (heartbeatTimerRef.current) {
-            clearInterval(heartbeatTimerRef.current);
-            heartbeatTimerRef.current = null;
-          }
-          
-          // Automatically try to reconnect with exponential backoff
+          // Schedule reconnection attempt
           if (reconnectTimerRef.current === null) {
             reconnectTimerRef.current = window.setTimeout(() => {
               reconnectTimerRef.current = null;
-              connectWebSocket();
-            }, backoffDelay); // Backoff based on number of attempts
+              setupWebSocket();
+            }, delay) as unknown as number;
           }
         };
         
-        newWs.onerror = (error) => {
+        socket.onerror = (error) => {
           console.error('WebSocket error:', error);
           // Let onclose handle reconnection
         };
       } catch (error) {
-        console.error('Error creating WebSocket connection:', error);
+        console.error('Error creating WebSocket:', error);
         setConnectionStatus('disconnected');
         
-        // Try to reconnect after delay
+        // Schedule reconnection attempt
         if (reconnectTimerRef.current === null) {
           reconnectTimerRef.current = window.setTimeout(() => {
             reconnectTimerRef.current = null;
-            connectWebSocket();
-          }, backoffDelay);
+            setupWebSocket();
+          }, delay) as unknown as number;
         }
       }
-    }, backoffDelay > 1000 ? backoffDelay : 0);
+    }, delay > 0 ? delay : 0);
   };
   
-  // Send value to WebSocket server
+  // Send value to server
   const sendValueToServer = (newValue: number) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'setValue', value: newValue }));
+    if (sharedWebSocket && sharedWebSocket.readyState === WebSocket.OPEN) {
+      sharedWebSocket.send(JSON.stringify({ type: 'setValue', value: newValue }));
     }
   };
   
-  // Initialize WebSocket connection
+  // Set up WebSocket on component mount
   useEffect(() => {
-    connectWebSocket();
+    setupWebSocket();
     
-    // Clean up on component unmount
+    // Clean up on unmount
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
       if (reconnectTimerRef.current !== null) {
         clearTimeout(reconnectTimerRef.current);
-      }
-      if (heartbeatTimerRef.current !== null) {
-        clearInterval(heartbeatTimerRef.current);
       }
     };
   }, []);
   
-  // Simulate encoder rotation (for UI only)
+  // Handle manual rotation buttons
   const handleRotate = (direction: 'left' | 'right') => {
     if (isLocked) {
       onLockError();
@@ -198,7 +174,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
     }, 200);
   };
   
-  // Handle button press (reset to 30)
+  // Handle reset button press
   const handleButtonPress = () => {
     if (isLocked) {
       onLockError();

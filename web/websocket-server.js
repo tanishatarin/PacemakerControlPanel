@@ -2,18 +2,12 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createRequire } from 'module';
 import http from 'http';
 
-const CLIENT_LIMIT = 1;  // Only allow one active client at a time
-
 // Create a require function for importing CommonJS modules
 const require = createRequire(import.meta.url);
 
-// Create an HTTP server first to make WebSocket more stable
+// Create an HTTP server to make WebSocket more stable
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
-
-// Ping intervals to keep connections alive
-const PING_INTERVAL = 5000;
-const CONNECTION_TIMEOUT = 15000;
 
 console.log('Starting WebSocket server...');
 
@@ -85,66 +79,17 @@ console.log(`Starting value: ${value}`);
 // Debounce time (milliseconds)
 const DEBOUNCE_MS = 1;  // Reduced debounce time for better responsiveness
 
-// Track clients and their heartbeats
-const clients = new Map();
-
-// Initialize heartbeat interval to keep connections alive
-const heartbeatInterval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    const client = clients.get(ws);
-    
-    if (client && (Date.now() - client.lastPing > CONNECTION_TIMEOUT)) {
-      console.log("Client timed out - terminating connection");
-      return ws.terminate();
-    }
-    
-    // Send ping to all clients to keep connections alive
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.ping();
-    }
-  });
-}, PING_INTERVAL);
+// Very simple client tracking
+let activeClients = 0;
 
 // WebSocket connections management
 wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress;
-  console.log(`Client connected from ${ip}`);
-  
-
-  // Check if we already have too many clients
-  if (clients.size >= CLIENT_LIMIT) {
-    console.log(`Client limit (${CLIENT_LIMIT}) reached - disconnecting newer connections`);
-    // Keep only the newest connection
-    const clientEntries = Array.from(clients.entries());
-    // Sort by connection time, newest first
-    clientEntries.sort((a, b) => b[1].connectedAt - a[1].connectedAt);
-    
-    // Keep the newest connection, disconnect the rest
-    for (let i = CLIENT_LIMIT; i < clientEntries.length; i++) {
-      const [oldWs, _] = clientEntries[i];
-      console.log(`Closing older connection from ${clients.get(oldWs)?.ip}`);
-      oldWs.close(1000, 'Too many connections');
-      clients.delete(oldWs);
-    }
-  }
-  
-  // Add client to tracking
-  clients.set(ws, { 
-    lastPing: Date.now(),
-    connectedAt: Date.now(),
-    ip: ip 
-  });
+  activeClients++;
+  console.log(`Client connected from ${ip}. Active clients: ${activeClients}`);
   
   // Send current value immediately on connection
   ws.send(JSON.stringify({ type: 'value', value }));
-  
-  // Handle ping messages to track connection health
-  ws.on('ping', () => {
-    const client = clients.get(ws);
-    if (client) {
-      client.lastPing = Date.now();
-    }
-  });
   
   // Handle client messages
   ws.on('message', (message) => {
@@ -156,9 +101,6 @@ wss.on('connection', (ws, req) => {
         value = data.value;
         console.log(`Value set manually to: ${value}`);
         broadcastValue();
-      } else if (data.type === 'ping') {
-        // Client ping/pong for connection checking
-        ws.send(JSON.stringify({ type: 'ping' }));
       }
     } catch (error) {
       console.error('Error parsing message:', error);
@@ -166,13 +108,12 @@ wss.on('connection', (ws, req) => {
   });
   
   ws.on('close', () => {
-    console.log(`Client disconnected from ${ip}`);
-    clients.delete(ws);
+    activeClients--;
+    console.log(`Client disconnected from ${ip}. Active clients: ${activeClients}`);
   });
   
   ws.on('error', (error) => {
     console.error(`WebSocket error for ${ip}:`, error);
-    clients.delete(ws);
   });
 });
 
@@ -247,9 +188,8 @@ if (buttonPin) {
 
 // Report server status periodically
 setInterval(() => {
-  const clientCount = clients.size;
-  console.log(`Active connections: ${clientCount}`);
-  if (clientCount > 0) {
+  console.log(`Active connections: ${activeClients}`);
+  if (activeClients > 0) {
     console.log(`Current value: ${value}`);
   }
 }, 30000); // Every 30 seconds
@@ -257,7 +197,6 @@ setInterval(() => {
 // Clean up on server shutdown
 process.on('SIGINT', () => {
   console.log('Shutting down...');
-  clearInterval(heartbeatInterval);
   
   if (clkPin) clkPin.unexport();
   if (dtPin) dtPin.unexport();
