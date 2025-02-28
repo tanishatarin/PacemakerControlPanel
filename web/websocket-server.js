@@ -100,7 +100,7 @@ let dtLastState = dtPin.readSync();
 let lastEncoderTime = Date.now();
 
 // Debounce time (milliseconds)
-const DEBOUNCE_MS = 10;
+const DEBOUNCE_MS = 1;
 
 // WebSocket connections management
 wss.on('connection', (ws) => {
@@ -190,7 +190,7 @@ buttonPin.watch((err, state) => {
   if (state === 1) {
     // Button pressed - reset to 30
     console.log('Button pressed????');
-    // value = 30;
+    value = 30;
     broadcastValue();
   }
 });
