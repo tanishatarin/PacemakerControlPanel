@@ -41,43 +41,43 @@ try {
   simulationMode = true;
   
   // Create mock GPIO for testing without hardware
-//   class MockGpio {
-//     constructor() {
-//       this.value = 0;
-//       this.callbacks = [];
-//     }
+  class MockGpio {
+    constructor() {
+      this.value = 0;
+      this.callbacks = [];
+    }
     
-//     readSync() {
-//       return this.value;
-//     }
+    readSync() {
+      return this.value;
+    }
     
-//     writeSync(value) {
-//       this.value = value;
-//     }
+    writeSync(value) {
+      this.value = value;
+    }
     
-//     watch(callback) {
-//       this.callbacks.push(callback);
-//     }
+    watch(callback) {
+      this.callbacks.push(callback);
+    }
     
-//     trigger(value) {
-//       this.value = value;
-//       this.callbacks.forEach(cb => cb(null, value));
-//     }
+    trigger(value) {
+      this.value = value;
+      this.callbacks.forEach(cb => cb(null, value));
+    }
     
-//     unexport() {
-//       // Do nothing
-//     }
-//   }
+    unexport() {
+      // Do nothing
+    }
+  }
   
-//   clkPin = new MockGpio();
-//   dtPin = new MockGpio();
-//   buttonPin = new MockGpio();
+  clkPin = new MockGpio();
+  dtPin = new MockGpio();
+  buttonPin = new MockGpio();
 }
 
 // Encoder state variables
 let value = 30; // Initial value as in your Python code
-let clkLastState = clkPin.readSync();
-let dtLastState = dtPin.readSync();
+let clkLastState = clkPin ? clkPin.readSync() : 0;
+let dtLastState = dtPin ? dtPin.readSync() : 0;
 let lastEncoderTime = Date.now();
 
 console.log(`Starting value: ${value}`);
@@ -186,60 +186,64 @@ function broadcastValue() {
 }
 
 // Watch for encoder CLK pin changes with improved direction detection
-clkPin.watch((err, clkState) => {
-  if (err) {
-    console.error('Error with CLK pin:', err);
-    return;
-  }
-  
-  // Check if enough time has passed since last event (debounce)
-  const now = Date.now();
-  if (now - lastEncoderTime < DEBOUNCE_MS) {
-    return;
-  }
-  lastEncoderTime = now;
-  
-  // Read current DT pin state
-  const dtState = dtPin.readSync();
-  
-  // Only process when CLK state changes
-  if (clkState !== clkLastState) {
-    if (clkState === 0) {  // Falling edge of CLK
-      // Determine direction based on DT state
-      if (dtState !== clkState) {
-        // DT is different from CLK - this is clockwise (right)
-        value = Math.min(200, value + 1);  // Always increment by 1
-        console.log(`Clockwise (right), new value: ${value}`);
-      } else {
-        // DT is same as CLK - this is counter-clockwise (left)
-        value = Math.max(30, value - 1);  // Always decrement by 1
-        console.log(`Counter-clockwise (left), new value: ${value}`);
-      }
-      
-      // Broadcast new value to all clients
-      broadcastValue();
+if (clkPin) {
+  clkPin.watch((err, clkState) => {
+    if (err) {
+      console.error('Error with CLK pin:', err);
+      return;
     }
-  }
-  
-  // Update last states
-  clkLastState = clkState;
-  dtLastState = dtState;
-});
+    
+    // Check if enough time has passed since last event (debounce)
+    const now = Date.now();
+    if (now - lastEncoderTime < DEBOUNCE_MS) {
+      return;
+    }
+    lastEncoderTime = now;
+    
+    // Read current DT pin state
+    const dtState = dtPin.readSync();
+    
+    // Only process when CLK state changes
+    if (clkState !== clkLastState) {
+      if (clkState === 0) {  // Falling edge of CLK
+        // Determine direction based on DT state
+        if (dtState !== clkState) {
+          // DT is different from CLK - this is clockwise (right)
+          value = Math.min(200, value + 1);  // Always increment by 1
+          console.log(`Clockwise (right), new value: ${value}`);
+        } else {
+          // DT is same as CLK - this is counter-clockwise (left)
+          value = Math.max(30, value - 1);  // Always decrement by 1
+          console.log(`Counter-clockwise (left), new value: ${value}`);
+        }
+        
+        // Broadcast new value to all clients
+        broadcastValue();
+      }
+    }
+    
+    // Update last states
+    clkLastState = clkState;
+    dtLastState = dtState;
+  });
+}
 
 // Watch for button presses
-buttonPin.watch((err, state) => {
-  if (err) {
-    console.error('Error with button pin:', err);
-    return;
-  }
-  
-  if (state === 1) {
-    // Button pressed - reset to 30
-    console.log('Button pressed, resetting to 30');
-    value = 30;
-    broadcastValue();
-  }
-});
+if (buttonPin) {
+  buttonPin.watch((err, state) => {
+    if (err) {
+      console.error('Error with button pin:', err);
+      return;
+    }
+    
+    if (state === 1) {
+      // Button pressed - reset to 30
+      console.log('Button pressed, resetting to 30');
+      value = 30;
+      broadcastValue();
+    }
+  });
+}
 
 // Report server status periodically
 setInterval(() => {
@@ -255,9 +259,9 @@ process.on('SIGINT', () => {
   console.log('Shutting down...');
   clearInterval(heartbeatInterval);
   
-  clkPin.unexport();
-  dtPin.unexport();
-  buttonPin.unexport();
+  if (clkPin) clkPin.unexport();
+  if (dtPin) dtPin.unexport();
+  if (buttonPin) buttonPin.unexport();
   
   server.close(() => {
     console.log('HTTP server closed');
