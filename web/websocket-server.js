@@ -1,12 +1,19 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createRequire } from 'module';
+import http from 'http';
 
 // Create a require function for importing CommonJS modules
 const require = createRequire(import.meta.url);
 
-// Set up WebSocket server
-const wss = new WebSocketServer({ port: 8080 });
-console.log('WebSocket server running on port 8080');
+// Create an HTTP server first to make WebSocket more stable
+const server = http.createServer();
+const wss = new WebSocketServer({ server });
+
+// Ping intervals to keep connections alive
+const PING_INTERVAL = 5000;
+const CONNECTION_TIMEOUT = 15000;
+
+console.log('Starting WebSocket server...');
 
 // Set up GPIO pins - using the same pins as in your Python reference code
 let clkPin, dtPin, buttonPin;
@@ -28,7 +35,7 @@ try {
   console.log(`Initial Button state: ${buttonPin.readSync()}`);
 } catch (error) {
   console.error('Error initializing GPIO pins:', error);
-  console.log('Running in mock mode with minimal simulation for testing');
+  console.log('Running in mock mode');
   simulationMode = true;
   
   // Create mock GPIO for testing without hardware
@@ -63,23 +70,6 @@ try {
   clkPin = new MockGpio();
   dtPin = new MockGpio();
   buttonPin = new MockGpio();
-  
-  // Add minimal simulation for testing - one rotation every 10 seconds
-  // This helps confirm the server is working
-  setInterval(() => {
-    console.log("Simulating a single clockwise rotation");
-    
-    // Simulate CLK going from 0 to 1
-    clkPin.trigger(1);
-    // Simulate DT staying at 0 (for clockwise)
-    dtPin.trigger(0);
-    
-    // Wait 50ms
-    setTimeout(() => {
-      // Simulate CLK going back to 0
-      clkPin.trigger(0);
-    }, 50);
-  }, 10000);
 }
 
 // Encoder state variables
@@ -89,30 +79,65 @@ let dtLastState = dtPin.readSync();
 let lastEncoderTime = Date.now();
 
 console.log(`Starting value: ${value}`);
-console.log(`Initial CLK last state: ${clkLastState}`);
-console.log(`Initial DT last state: ${dtLastState}`);
 
 // Debounce time (milliseconds)
 const DEBOUNCE_MS = 5;  // Reduced debounce time for better responsiveness
 
+// Track clients and their heartbeats
+const clients = new Map();
+
+// Initialize heartbeat interval to keep connections alive
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    const client = clients.get(ws);
+    
+    if (client && (Date.now() - client.lastPong > CONNECTION_TIMEOUT)) {
+      console.log("Client timed out - terminating connection");
+      return ws.terminate();
+    }
+    
+    // Send ping to all clients to keep connections alive
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+    }
+  });
+}, PING_INTERVAL);
+
 // WebSocket connections management
-wss.on('connection', (ws) => {
-  console.log('Client connected');
+wss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress;
+  console.log(`Client connected from ${ip}`);
+  
+  // Add client to tracking
+  clients.set(ws, { 
+    lastPong: Date.now(),
+    ip: ip 
+  });
   
   // Send current value immediately on connection
   ws.send(JSON.stringify({ type: 'value', value }));
+  
+  // Handle pong messages to track connection health
+  ws.on('pong', () => {
+    const client = clients.get(ws);
+    if (client) {
+      client.lastPong = Date.now();
+    }
+  });
   
   // Handle client messages
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
-      console.log('Received from client:', data);
       
       // Handle manual value update from client
       if (data.type === 'setValue') {
         value = data.value;
         console.log(`Value set manually to: ${value}`);
         broadcastValue();
+      } else if (data.type === 'ping') {
+        // Client ping/pong for connection checking
+        ws.send(JSON.stringify({ type: 'pong' }));
       }
     } catch (error) {
       console.error('Error parsing message:', error);
@@ -120,13 +145,18 @@ wss.on('connection', (ws) => {
   });
   
   ws.on('close', () => {
-    console.log('Client disconnected');
+    console.log(`Client disconnected from ${ip}`);
+    clients.delete(ws);
+  });
+  
+  ws.on('error', (error) => {
+    console.error(`WebSocket error for ${ip}:`, error);
+    clients.delete(ws);
   });
 });
 
 // Broadcast current value to all connected clients
 function broadcastValue() {
-  console.log(`Broadcasting value: ${value}`);
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({ type: 'value', value }));
@@ -141,13 +171,9 @@ clkPin.watch((err, clkState) => {
     return;
   }
   
-  // Print raw state changes for debugging
-  console.log(`CLK changed to: ${clkState}, DT is: ${dtPin.readSync()}`);
-  
   // Check if enough time has passed since last event (debounce)
   const now = Date.now();
   if (now - lastEncoderTime < DEBOUNCE_MS) {
-    console.log(`Debounced: too soon (${now - lastEncoderTime}ms)`);
     return;
   }
   lastEncoderTime = now;
@@ -157,29 +183,21 @@ clkPin.watch((err, clkState) => {
   
   // Only process when CLK state changes
   if (clkState !== clkLastState) {
-    console.log(`CLK state changed from ${clkLastState} to ${clkState}`);
-    
     if (clkState === 0) {  // Falling edge of CLK
       // Determine direction based on DT state
       if (dtState !== clkState) {
         // DT is different from CLK - this is clockwise (right)
-        const oldValue = value;
         value = Math.min(200, value + 1);  // Always increment by 1
-        console.log(`Clockwise (right), value changed from ${oldValue} to ${value}`);
+        console.log(`Clockwise (right), new value: ${value}`);
       } else {
         // DT is same as CLK - this is counter-clockwise (left)
-        const oldValue = value;
         value = Math.max(30, value - 1);  // Always decrement by 1
-        console.log(`Counter-clockwise (left), value changed from ${oldValue} to ${value}`);
+        console.log(`Counter-clockwise (left), new value: ${value}`);
       }
       
       // Broadcast new value to all clients
       broadcastValue();
-    } else {
-      console.log('CLK rising edge - no action taken');
     }
-  } else {
-    console.log('Duplicate CLK state - ignored');
   }
   
   // Update last states
@@ -194,8 +212,6 @@ buttonPin.watch((err, state) => {
     return;
   }
   
-  console.log(`Button state changed to: ${state}`);
-  
   if (state === 1) {
     // Button pressed - reset to 30
     console.log('Button pressed, resetting to 30');
@@ -204,23 +220,34 @@ buttonPin.watch((err, state) => {
   }
 });
 
-// Keep track of clients
+// Report server status periodically
 setInterval(() => {
-  const clientCount = [...wss.clients].length;
+  const clientCount = clients.size;
   console.log(`Active connections: ${clientCount}`);
   if (clientCount > 0) {
     console.log(`Current value: ${value}`);
   }
-}, 5000);
+}, 30000); // Every 30 seconds
 
-// Clean up GPIO on server shutdown
+// Clean up on server shutdown
 process.on('SIGINT', () => {
   console.log('Shutting down...');
+  clearInterval(heartbeatInterval);
+  
   clkPin.unexport();
   dtPin.unexport();
   buttonPin.unexport();
+  
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
+  
   console.log('GPIO pins cleaned up');
   process.exit();
 });
 
-console.log('Server setup complete. Waiting for encoder signals...');
+// Start the server
+server.listen(8080, () => {
+  console.log('WebSocket server running on port 8080');
+  console.log('Waiting for encoder signals...');
+});

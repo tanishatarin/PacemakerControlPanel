@@ -22,76 +22,125 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
   const [isRotating, setIsRotating] = useState(false);
   const [rotationDirection, setRotationDirection] = useState<'left' | 'right' | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const heartbeatTimerRef = useRef<number | null>(null);
   const lastValueRef = useRef(initialRate);
+  const connectionsAttempts = useRef(0);
   
-  // Connect to WebSocket server
+  // Connect to WebSocket server with improved reliability
   const connectWebSocket = () => {
+    // Skip if we're already trying to connect
+    if (connectionStatus === 'connecting' && ws.current) {
+      return;
+    }
+    
     // Clean up any existing connection
     if (ws.current) {
       ws.current.close();
+      ws.current = null;
     }
     
     // Update status
     setConnectionStatus('connecting');
+    connectionsAttempts.current++;
     
-    // Create new WebSocket connection
-    const serverUrl = 'ws://localhost:8080'; // Change to your server's address if needed
-    const newWs = new WebSocket(serverUrl);
-    ws.current = newWs;
+    // Calculate backoff delay based on connection attempts
+    const backoffDelay = Math.min(connectionsAttempts.current * 1000, 5000);
     
-    // WebSocket event handlers
-    newWs.onopen = () => {
-      console.log('Connected to encoder WebSocket server');
-      setConnectionStatus('connected');
-    };
-    
-    newWs.onmessage = (event) => {
+    // Create new WebSocket connection with retry backoff 
+    setTimeout(() => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'value' && !isLocked) {
-          const newValue = data.value;
-          if (newValue !== lastValueRef.current) {
-            // Determine rotation direction based on value change
-            const direction = newValue > lastValueRef.current ? 'right' : 'left';
-            setRotationDirection(direction);
-            
-            // Update rate and provide visual feedback
-            setRate(newValue);
-            onRateChange(newValue);
-            lastValueRef.current = newValue;
-            
-            // Visual feedback for rotation
-            setIsRotating(true);
-            setTimeout(() => {
-              setIsRotating(false);
-              setRotationDirection(null);
-            }, 300);
+        const serverUrl = 'ws://localhost:8080'; // Change to your server's address if needed
+        const newWs = new WebSocket(serverUrl);
+        ws.current = newWs;
+        
+        // WebSocket event handlers
+        newWs.onopen = () => {
+          console.log('Connected to encoder WebSocket server');
+          setConnectionStatus('connected');
+          connectionsAttempts.current = 0; // Reset attempts counter on success
+          
+          // Start sending heartbeats to keep connection alive
+          if (heartbeatTimerRef.current) {
+            clearInterval(heartbeatTimerRef.current);
           }
-        }
+          
+          heartbeatTimerRef.current = window.setInterval(() => {
+            if (newWs.readyState === WebSocket.OPEN) {
+              newWs.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 4000) as unknown as number;
+        };
+        
+        newWs.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'value' && !isLocked) {
+              const newValue = data.value;
+              if (newValue !== lastValueRef.current) {
+                // Determine rotation direction based on value change
+                const direction = newValue > lastValueRef.current ? 'right' : 'left';
+                setRotationDirection(direction);
+                
+                // Update rate and provide visual feedback
+                setRate(newValue);
+                onRateChange(newValue);
+                lastValueRef.current = newValue;
+                
+                // Visual feedback for rotation
+                setIsRotating(true);
+                setTimeout(() => {
+                  setIsRotating(false);
+                  setRotationDirection(null);
+                }, 200);
+              }
+            } else if (data.type === 'pong') {
+              // Received heartbeat response, connection is good
+            }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
+        };
+        
+        newWs.onclose = (event) => {
+          console.log(`WebSocket closed with code ${event.code}`);
+          setConnectionStatus('disconnected');
+          
+          // Clear heartbeat timer
+          if (heartbeatTimerRef.current) {
+            clearInterval(heartbeatTimerRef.current);
+            heartbeatTimerRef.current = null;
+          }
+          
+          // Automatically try to reconnect with exponential backoff
+          if (reconnectTimerRef.current === null) {
+            reconnectTimerRef.current = window.setTimeout(() => {
+              reconnectTimerRef.current = null;
+              connectWebSocket();
+            }, backoffDelay); // Backoff based on number of attempts
+          }
+        };
+        
+        newWs.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          // Let onclose handle reconnection
+        };
       } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+        console.error('Error creating WebSocket connection:', error);
+        setConnectionStatus('disconnected');
+        
+        // Try to reconnect after delay
+        if (reconnectTimerRef.current === null) {
+          reconnectTimerRef.current = window.setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connectWebSocket();
+          }, backoffDelay);
+        }
       }
-    };
-    
-    newWs.onclose = () => {
-      console.log('Disconnected from encoder WebSocket server');
-      setConnectionStatus('disconnected');
-      
-      // Automatically try to reconnect
-      if (reconnectTimerRef.current === null) {
-        reconnectTimerRef.current = window.setTimeout(() => {
-          reconnectTimerRef.current = null;
-          connectWebSocket();
-        }, 5000); // Try to reconnect after 5 seconds
-      }
-    };
-    
-    newWs.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      newWs.close();
-    };
+    }, backoffDelay > 1000 ? backoffDelay : 0);
   };
   
   // Send value to WebSocket server
@@ -112,6 +161,9 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
       }
       if (reconnectTimerRef.current !== null) {
         clearTimeout(reconnectTimerRef.current);
+      }
+      if (heartbeatTimerRef.current !== null) {
+        clearInterval(heartbeatTimerRef.current);
       }
     };
   }, []);
@@ -143,7 +195,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
     setTimeout(() => {
       setIsRotating(false);
       setRotationDirection(null);
-    }, 300);
+    }, 200);
   };
   
   // Handle button press (reset to 30)
@@ -229,10 +281,13 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
           <div className="flex-1 pl-4">
             <div className="flex items-center">
               <h2 className="text-xl text-gray-800">Rate</h2>
-              <div className={`ml-2 w-3 h-3 rounded-full ${
-                connectionStatus === 'connected' ? 'bg-green-500' : 
-                connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-              }`} />
+              <div 
+                className={`ml-2 w-3 h-3 rounded-full transition-colors duration-300 ${
+                  connectionStatus === 'connected' ? 'bg-green-500' : 
+                  connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
+                }`} 
+                title={`Status: ${connectionStatus}`}
+              />
             </div>
             <p className="text-sm text-gray-500">CLK: GPIO27, DT: GPIO22, BTN: GPIO25</p>
           </div>
@@ -329,7 +384,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
           <div className="text-xs text-gray-500">
             {connectionStatus === 'connected' ? 'Connected to Hardware' : 
              connectionStatus === 'connecting' ? 'Connecting to Hardware...' : 
-             'Hardware Disconnected - Retrying...'}
+             'Reconnecting...'}
           </div>
           <button
             onClick={() => handleRotate('right')}
