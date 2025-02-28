@@ -1,21 +1,85 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import Gpio from 'onoff';
+import fs from 'fs';
+import path from 'path';
 
-// Rotary Encoder Configuration
-const CLK_PIN = 27;   // GPIO17
-const DT_PIN = 22;    // GPIO18
-const BUTTON_PIN = 25; // GPIO25
+// GPIO Pin Configuration
+const CLK_PIN = 27;   
+const DT_PIN = 22;    
+const BUTTON_PIN = 25; 
 
-// Initialize GPIO pins
-const clkPin = new Gpio.Gpio(CLK_PIN, 'in', 'both');
-const dtPin = new Gpio.Gpio(DT_PIN, 'in', 'both');
-const buttonPin = new Gpio.Gpio(BUTTON_PIN, 'in', 'rising');
+// GPIO Utility Functions
+class RaspberryPiGPIO {
+  constructor(pin, direction = 'in') {
+    this.pin = pin;
+    this.direction = direction;
+    this.path = `/sys/class/gpio/gpio${pin}`;
+    
+    this.export();
+    this.setDirection();
+  }
+
+  export() {
+    const exportPath = '/sys/class/gpio/export';
+    try {
+      if (!fs.existsSync(this.path)) {
+        fs.writeFileSync(exportPath, this.pin.toString());
+      }
+    } catch (err) {
+      console.error(`Error exporting pin ${this.pin}:`, err);
+    }
+  }
+
+  setDirection() {
+    try {
+      fs.writeFileSync(path.join(this.path, 'direction'), this.direction);
+    } catch (err) {
+      console.error(`Error setting direction for pin ${this.pin}:`, err);
+    }
+  }
+
+  readValue() {
+    try {
+      return parseInt(fs.readFileSync(path.join(this.path, 'value'), 'utf8').trim());
+    } catch (err) {
+      console.error(`Error reading value for pin ${this.pin}:`, err);
+      return 0;
+    }
+  }
+
+  watchValue(callback) {
+    let lastValue = this.readValue();
+    const watcher = fs.watch(path.join(this.path, 'value'), (eventType) => {
+      if (eventType === 'change') {
+        const currentValue = this.readValue();
+        if (currentValue !== lastValue) {
+          callback(currentValue);
+          lastValue = currentValue;
+        }
+      }
+    });
+
+    return () => watcher.close();
+  }
+
+  unexport() {
+    try {
+      fs.writeFileSync('/sys/class/gpio/unexport', this.pin.toString());
+    } catch (err) {
+      console.error(`Error unexporting pin ${this.pin}:`, err);
+    }
+  }
+}
 
 // Encoder state variables
 let encoderSteps = 30; // Initial value
-let lastClkState = clkPin.readSync();
+let lastClkState = 0;
 let lastDebounceTime = Date.now();
-const DEBOUNCE_DELAY = 1; // milliseconds
+const DEBOUNCE_DELAY = 50; // milliseconds
+
+// Initialize GPIO pins
+const clkPin = new RaspberryPiGPIO(CLK_PIN);
+const dtPin = new RaspberryPiGPIO(DT_PIN);
+const buttonPin = new RaspberryPiGPIO(BUTTON_PIN);
 
 // Set up WebSocket server
 const wss = new WebSocketServer({ port: 8080 });
@@ -60,22 +124,19 @@ wss.on('connection', (ws) => {
 });
 
 // Encoder rotation detection
-clkPin.watch((err, clkState) => {
-  if (err) {
-    console.error('Error watching CLK pin:', err);
-    return;
-  }
-
-  // Debounce
+let rotationTimeout;
+function detectRotation() {
   const now = Date.now();
+  
+  // Debounce
   if (now - lastDebounceTime < DEBOUNCE_DELAY) {
     return;
   }
   lastDebounceTime = now;
 
   // Read current states
-  const currentClkState = clkState;
-  const dtState = dtPin.readSync();
+  const currentClkState = clkPin.readValue();
+  const dtState = dtPin.readValue();
 
   // Detect rotation
   if (currentClkState !== lastClkState) {
@@ -92,23 +153,28 @@ clkPin.watch((err, clkState) => {
   }
 
   lastClkState = currentClkState;
+}
+
+// Watch for encoder rotation
+const stopClkWatch = clkPin.watchValue(() => {
+  clearTimeout(rotationTimeout);
+  rotationTimeout = setTimeout(detectRotation, 10);
 });
 
 // Button press handler - reset to initial value
-buttonPin.watch((err) => {
-  if (err) {
-    console.error('Error watching button pin:', err);
-    return;
+const stopButtonWatch = buttonPin.watchValue((value) => {
+  if (value === 1) {
+    // Reset to initial value
+    encoderSteps = 30;
+    console.log('Reset to 30');
+    broadcastValue(encoderSteps);
   }
-
-  // Reset to initial value
-  encoderSteps = 30;
-  console.log('Reset to 30');
-  broadcastValue(encoderSteps);
 });
 
 // Cleanup on exit
 process.on('SIGINT', () => {
+  stopClkWatch();
+  stopButtonWatch();
   clkPin.unexport();
   dtPin.unexport();
   buttonPin.unexport();
