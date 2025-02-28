@@ -20,9 +20,11 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
   const [rate, setRate] = useState(initialRate);
   const [isButtonPressed, setIsButtonPressed] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
+  const [rotationDirection, setRotationDirection] = useState<'left' | 'right' | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const lastValueRef = useRef(initialRate);
   
   // Connect to WebSocket server
   const connectWebSocket = () => {
@@ -49,13 +51,23 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'value' && !isLocked) {
-          if (data.value !== rate) {
-            setRate(data.value);
-            onRateChange(data.value);
+          const newValue = data.value;
+          if (newValue !== lastValueRef.current) {
+            // Determine rotation direction based on value change
+            const direction = newValue > lastValueRef.current ? 'right' : 'left';
+            setRotationDirection(direction);
+            
+            // Update rate and provide visual feedback
+            setRate(newValue);
+            onRateChange(newValue);
+            lastValueRef.current = newValue;
             
             // Visual feedback for rotation
             setIsRotating(true);
-            setTimeout(() => setIsRotating(false), 300);
+            setTimeout(() => {
+              setIsRotating(false);
+              setRotationDirection(null);
+            }, 300);
           }
         }
       } catch (error) {
@@ -105,38 +117,33 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
   }, []);
   
   // Simulate encoder rotation (for UI only)
-  const handleRotate = (direction: number) => {
+  const handleRotate = (direction: 'left' | 'right') => {
     if (isLocked) {
       onLockError();
       return;
     }
     
     setIsRotating(true);
+    setRotationDirection(direction);
     
-    // Calculate new rate based on current rate and direction
-    let newRate;
-    if (rate < 50) {
-      newRate = rate + (direction * 5);
-    } else if (rate < 100) {
-      newRate = rate + (direction * 2);
-    } else if (rate < 170) {
-      newRate = rate + (direction * 5);
-    } else {
-      newRate = rate + (direction * 6);
-    }
-    
-    // Clamp between min and max
-    newRate = Math.max(minRate, Math.min(maxRate, newRate));
+    // Calculate new rate based on direction - always change by 1
+    const newRate = direction === 'right' 
+      ? Math.min(maxRate, rate + 1)
+      : Math.max(minRate, rate - 1);
     
     // Update local state
     setRate(newRate);
     onRateChange(newRate);
+    lastValueRef.current = newRate;
     
     // Send to server
     sendValueToServer(newRate);
     
     // Reset rotation visual feedback
-    setTimeout(() => setIsRotating(false), 300);
+    setTimeout(() => {
+      setIsRotating(false);
+      setRotationDirection(null);
+    }, 300);
   };
   
   // Handle button press (reset to 30)
@@ -152,6 +159,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
     const resetValue = 30;
     setRate(resetValue);
     onRateChange(resetValue);
+    lastValueRef.current = resetValue;
     
     // Send to server
     sendValueToServer(resetValue);
@@ -268,7 +276,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
                   stroke={color}
                   strokeWidth={stroke}
                   strokeLinecap="round"
-                  className={`transition-all duration-150 ease-out ${isRotating ? 'animate-pulse' : ''}`}
+                  className={`transition-all duration-150 ease-out ${isRotating ? rotationDirection === 'right' ? 'animate-pulse' : 'animate-pulse' : ''}`}
                 />
                 
                 {/* Current value */}
@@ -288,6 +296,11 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
               <span className="text-2xl font-bold" style={{ color }}>
                 {rate} ppm
               </span>
+              {isRotating && rotationDirection && (
+                <span className="ml-2 text-sm">
+                  {rotationDirection === 'right' ? '▶' : '◀'}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -307,11 +320,11 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
         
         <div className="flex justify-between items-center mb-4">
           <button
-            onClick={() => handleRotate(-1)}
+            onClick={() => handleRotate('left')}
             className={`px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={isLocked}
           >
-            ◀ Rotate Left
+            ◀ Rotate Left (-1)
           </button>
           <div className="text-xs text-gray-500">
             {connectionStatus === 'connected' ? 'Connected to Hardware' : 
@@ -319,11 +332,11 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
              'Hardware Disconnected - Retrying...'}
           </div>
           <button
-            onClick={() => handleRotate(1)}
+            onClick={() => handleRotate('right')}
             className={`px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={isLocked}
           >
-            Rotate Right ▶
+            Rotate Right (+1) ▶
           </button>
         </div>
         
@@ -351,6 +364,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
               const newValue = parseInt(e.target.value);
               setRate(newValue);
               onRateChange(newValue);
+              lastValueRef.current = newValue;
               sendValueToServer(newValue);
             }}
             className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
