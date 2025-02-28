@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createRequire } from 'module';
 import http from 'http';
 
+const CLIENT_LIMIT = 1;  // Only allow one active client at a time
+
 // Create a require function for importing CommonJS modules
 const require = createRequire(import.meta.url);
 
@@ -39,37 +41,37 @@ try {
   simulationMode = true;
   
   // Create mock GPIO for testing without hardware
-  class MockGpio {
-    constructor() {
-      this.value = 0;
-      this.callbacks = [];
-    }
+//   class MockGpio {
+//     constructor() {
+//       this.value = 0;
+//       this.callbacks = [];
+//     }
     
-    readSync() {
-      return this.value;
-    }
+//     readSync() {
+//       return this.value;
+//     }
     
-    writeSync(value) {
-      this.value = value;
-    }
+//     writeSync(value) {
+//       this.value = value;
+//     }
     
-    watch(callback) {
-      this.callbacks.push(callback);
-    }
+//     watch(callback) {
+//       this.callbacks.push(callback);
+//     }
     
-    trigger(value) {
-      this.value = value;
-      this.callbacks.forEach(cb => cb(null, value));
-    }
+//     trigger(value) {
+//       this.value = value;
+//       this.callbacks.forEach(cb => cb(null, value));
+//     }
     
-    unexport() {
-      // Do nothing
-    }
-  }
+//     unexport() {
+//       // Do nothing
+//     }
+//   }
   
-  clkPin = new MockGpio();
-  dtPin = new MockGpio();
-  buttonPin = new MockGpio();
+//   clkPin = new MockGpio();
+//   dtPin = new MockGpio();
+//   buttonPin = new MockGpio();
 }
 
 // Encoder state variables
@@ -81,7 +83,7 @@ let lastEncoderTime = Date.now();
 console.log(`Starting value: ${value}`);
 
 // Debounce time (milliseconds)
-const DEBOUNCE_MS = 5;  // Reduced debounce time for better responsiveness
+const DEBOUNCE_MS = 1;  // Reduced debounce time for better responsiveness
 
 // Track clients and their heartbeats
 const clients = new Map();
@@ -91,7 +93,7 @@ const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     const client = clients.get(ws);
     
-    if (client && (Date.now() - client.lastPong > CONNECTION_TIMEOUT)) {
+    if (client && (Date.now() - client.lastPing > CONNECTION_TIMEOUT)) {
       console.log("Client timed out - terminating connection");
       return ws.terminate();
     }
@@ -108,20 +110,39 @@ wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress;
   console.log(`Client connected from ${ip}`);
   
+
+  // Check if we already have too many clients
+  if (clients.size >= CLIENT_LIMIT) {
+    console.log(`Client limit (${CLIENT_LIMIT}) reached - disconnecting newer connections`);
+    // Keep only the newest connection
+    const clientEntries = Array.from(clients.entries());
+    // Sort by connection time, newest first
+    clientEntries.sort((a, b) => b[1].connectedAt - a[1].connectedAt);
+    
+    // Keep the newest connection, disconnect the rest
+    for (let i = CLIENT_LIMIT; i < clientEntries.length; i++) {
+      const [oldWs, _] = clientEntries[i];
+      console.log(`Closing older connection from ${clients.get(oldWs)?.ip}`);
+      oldWs.close(1000, 'Too many connections');
+      clients.delete(oldWs);
+    }
+  }
+  
   // Add client to tracking
   clients.set(ws, { 
-    lastPong: Date.now(),
+    lastPing: Date.now(),
+    connectedAt: Date.now(),
     ip: ip 
   });
   
   // Send current value immediately on connection
   ws.send(JSON.stringify({ type: 'value', value }));
   
-  // Handle pong messages to track connection health
-  ws.on('pong', () => {
+  // Handle ping messages to track connection health
+  ws.on('ping', () => {
     const client = clients.get(ws);
     if (client) {
-      client.lastPong = Date.now();
+      client.lastPing = Date.now();
     }
   });
   
@@ -137,7 +158,7 @@ wss.on('connection', (ws, req) => {
         broadcastValue();
       } else if (data.type === 'ping') {
         // Client ping/pong for connection checking
-        ws.send(JSON.stringify({ type: 'pong' }));
+        ws.send(JSON.stringify({ type: 'ping' }));
       }
     } catch (error) {
       console.error('Error parsing message:', error);
