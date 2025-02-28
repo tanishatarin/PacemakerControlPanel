@@ -1,19 +1,15 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createRequire } from 'module';
-import http from 'http';
 
 // Create a require function for importing CommonJS modules
 const require = createRequire(import.meta.url);
 
-// Create an HTTP server to make WebSocket more stable
-const server = http.createServer();
-const wss = new WebSocketServer({ server });
-
-console.log('Starting WebSocket server...');
+// Set up WebSocket server
+const wss = new WebSocketServer({ port: 8080 });
+console.log('WebSocket server running on port 8080');
 
 // Set up GPIO pins - using the same pins as in your Python reference code
 let clkPin, dtPin, buttonPin;
-let simulationMode = false;
 
 try {
   // Try to import the 'onoff' module
@@ -24,16 +20,9 @@ try {
   dtPin = new Gpio(22, 'in', 'both');
   buttonPin = new Gpio(25, 'in', 'both');
   console.log('GPIO pins initialized successfully');
-  
-  // Initial state reading
-  console.log(`Initial CLK state: ${clkPin.readSync()}`);
-  console.log(`Initial DT state: ${dtPin.readSync()}`);
-  console.log(`Initial Button state: ${buttonPin.readSync()}`);
 } catch (error) {
   console.error('Error initializing GPIO pins:', error);
-  console.log('Running in mock mode');
-  simulationMode = true;
-  
+  console.log('Running in simulation mode');
   // Create mock GPIO for testing without hardware
   class MockGpio {
     constructor() {
@@ -66,27 +55,33 @@ try {
   clkPin = new MockGpio();
   dtPin = new MockGpio();
   buttonPin = new MockGpio();
+  
+  // For testing: simulate encoder rotation every 5 seconds
+  let mockValue = 1;
+  setInterval(() => {
+    mockValue = 1 - mockValue; // Toggle between 0 and 1
+    clkPin.trigger(mockValue);
+    dtPin.trigger(mockValue === 1 ? 0 : 1); // Opposite for clockwise rotation
+    console.log('Simulated encoder rotation, CLK:', mockValue);
+  }, 5000);
+  
+  // Simulate button press every 15 seconds
+  setInterval(() => {
+    buttonPin.trigger(1);
+    console.log('Simulated button press');
+    setTimeout(() => {
+      buttonPin.trigger(0);
+    }, 200); // Release button after 200ms
+  }, 15000);
 }
 
 // Encoder state variables
 let value = 30; // Initial value as in your Python code
-let clkLastState = clkPin ? clkPin.readSync() : 0;
-let dtLastState = dtPin ? dtPin.readSync() : 0;
-let lastEncoderTime = Date.now();
-
-console.log(`Starting value: ${value}`);
-
-// Debounce time (milliseconds)
-const DEBOUNCE_MS = 1;  // Reduced debounce time for better responsiveness
-
-// Very simple client tracking
-let activeClients = 0;
+let clkLastState = clkPin.readSync();
 
 // WebSocket connections management
-wss.on('connection', (ws, req) => {
-  const ip = req.socket.remoteAddress;
-  activeClients++;
-  console.log(`Client connected from ${ip}. Active clients: ${activeClients}`);
+wss.on('connection', (ws) => {
+  console.log('Client connected');
   
   // Send current value immediately on connection
   ws.send(JSON.stringify({ type: 'value', value }));
@@ -95,11 +90,11 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
+      console.log('Received:', data);
       
       // Handle manual value update from client
       if (data.type === 'setValue') {
         value = data.value;
-        console.log(`Value set manually to: ${value}`);
         broadcastValue();
       }
     } catch (error) {
@@ -108,12 +103,7 @@ wss.on('connection', (ws, req) => {
   });
   
   ws.on('close', () => {
-    activeClients--;
-    console.log(`Client disconnected from ${ip}. Active clients: ${activeClients}`);
-  });
-  
-  ws.on('error', (error) => {
-    console.error(`WebSocket error for ${ip}:`, error);
+    console.log('Client disconnected');
   });
 });
 
@@ -126,92 +116,65 @@ function broadcastValue() {
   });
 }
 
-// Watch for encoder CLK pin changes with improved direction detection
-if (clkPin) {
-  clkPin.watch((err, clkState) => {
-    if (err) {
-      console.error('Error with CLK pin:', err);
-      return;
-    }
-    
-    // Check if enough time has passed since last event (debounce)
-    const now = Date.now();
-    if (now - lastEncoderTime < DEBOUNCE_MS) {
-      return;
-    }
-    lastEncoderTime = now;
-    
-    // Read current DT pin state
+// Variable step size similar to your CircularControl component
+function getStepSize(value) {
+  if (value < 50) return 5;
+  if (value < 100) return 2;
+  if (value < 170) return 5;
+  return 6;
+}
+
+// Watch for encoder CLK pin changes
+clkPin.watch((err, clkState) => {
+  if (err) {
+    console.error('Error with CLK pin:', err);
+    return;
+  }
+  
+  // Only process when CLK state changes
+  if (clkState !== clkLastState) {
+    // Read DT pin to determine direction
     const dtState = dtPin.readSync();
     
-    // Only process when CLK state changes
-    if (clkState !== clkLastState) {
-      if (clkState === 0) {  // Falling edge of CLK
-        // Determine direction based on DT state
-        if (dtState !== clkState) {
-          // DT is different from CLK - this is clockwise (right)
-          value = Math.min(200, value + 1);  // Always increment by 1
-          console.log(`Clockwise (right), new value: ${value}`);
-        } else {
-          // DT is same as CLK - this is counter-clockwise (left)
-          value = Math.max(30, value - 1);  // Always decrement by 1
-          console.log(`Counter-clockwise (left), new value: ${value}`);
-        }
-        
-        // Broadcast new value to all clients
-        broadcastValue();
-      }
+    if (clkState !== dtState) {
+      // Clockwise rotation - increase value
+      value = Math.min(200, value + getStepSize(value));
+      console.log('Clockwise, new value:', value);
+    } else {
+      // Counter-clockwise rotation - decrease value
+      value = Math.max(30, value - getStepSize(value));
+      console.log('Counter-clockwise, new value:', value);
     }
     
-    // Update last states
-    clkLastState = clkState;
-    dtLastState = dtState;
-  });
-}
-
-// Watch for button presses
-if (buttonPin) {
-  buttonPin.watch((err, state) => {
-    if (err) {
-      console.error('Error with button pin:', err);
-      return;
-    }
-    
-    if (state === 1) {
-      // Button pressed - reset to 30
-      console.log('Button pressed, resetting to 30');
-      value = 30;
-      broadcastValue();
-    }
-  });
-}
-
-// Report server status periodically
-setInterval(() => {
-  console.log(`Active connections: ${activeClients}`);
-  if (activeClients > 0) {
-    console.log(`Current value: ${value}`);
+    // Broadcast new value to all clients
+    broadcastValue();
   }
-}, 30000); // Every 30 seconds
-
-// Clean up on server shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down...');
   
-  if (clkPin) clkPin.unexport();
-  if (dtPin) dtPin.unexport();
-  if (buttonPin) buttonPin.unexport();
-  
-  server.close(() => {
-    console.log('HTTP server closed');
-  });
-  
-  console.log('GPIO pins cleaned up');
-  process.exit();
+  // Update last CLK state
+  clkLastState = clkState;
 });
 
-// Start the server
-server.listen(8080, () => {
-  console.log('WebSocket server running on port 8080');
-  console.log('Waiting for encoder signals...');
+// Watch for button presses
+buttonPin.watch((err, state) => {
+  if (err) {
+    console.error('Error with button pin:', err);
+    return;
+  }
+  
+  if (state === 1) {
+    // Button pressed - reset to 30
+    console.log('Button pressed, resetting to 30');
+    value = 30;
+    broadcastValue();
+  }
+});
+
+// Clean up GPIO on server shutdown
+process.on('SIGINT', () => {
+  console.log('Shutting down...');
+  clkPin.unexport();
+  dtPin.unexport();
+  buttonPin.unexport();
+  console.log('GPIO pins cleaned up');
+  process.exit();
 });

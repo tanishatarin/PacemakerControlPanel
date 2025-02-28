@@ -9,10 +9,6 @@ interface EncoderRateControlProps {
   maxRate?: number;
 }
 
-// Shared WebSocket instance to prevent multiple connections
-let sharedWebSocket: WebSocket | null = null;
-let wsConnectionAttempts = 0;
-
 const EncoderRateControl: React.FC<EncoderRateControlProps> = ({ 
   onRateChange, 
   isLocked = false, 
@@ -24,157 +20,126 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
   const [rate, setRate] = useState(initialRate);
   const [isButtonPressed, setIsButtonPressed] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
-  const [rotationDirection, setRotationDirection] = useState<'left' | 'right' | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
-  
-  // Use ref for values that don't trigger re-renders
-  const lastValueRef = useRef(initialRate);
+  const ws = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   
-  // Connect or reuse WebSocket
-  const setupWebSocket = () => {
-    if (sharedWebSocket !== null && sharedWebSocket.readyState === WebSocket.OPEN) {
-      // Reuse existing connection
-      setConnectionStatus('connected');
-      return;
+  // Connect to WebSocket server
+  const connectWebSocket = () => {
+    // Clean up any existing connection
+    if (ws.current) {
+      ws.current.close();
     }
     
-    // Clean up any existing connections
-    if (sharedWebSocket && (sharedWebSocket.readyState === WebSocket.OPEN || sharedWebSocket.readyState === WebSocket.CONNECTING)) {
-      console.log('Closing existing WebSocket');
-      sharedWebSocket.close();
-      sharedWebSocket = null;
-    }
-    
-    // Delay based on connection attempts (simple exponential backoff)
-    const delay = Math.min(wsConnectionAttempts * 500, 3000);
-    wsConnectionAttempts++;
-    
-    // Update UI state
+    // Update status
     setConnectionStatus('connecting');
     
-    setTimeout(() => {
+    // Create new WebSocket connection
+    const serverUrl = 'ws://localhost:8080'; // Change to your server's address if needed
+    const newWs = new WebSocket(serverUrl);
+    ws.current = newWs;
+    
+    // WebSocket event handlers
+    newWs.onopen = () => {
+      console.log('Connected to encoder WebSocket server');
+      setConnectionStatus('connected');
+    };
+    
+    newWs.onmessage = (event) => {
       try {
-        // Create new connection
-        const serverUrl = 'ws://localhost:8080';
-        const socket = new WebSocket(serverUrl);
-        sharedWebSocket = socket;
-        
-        // Handle connection events
-        socket.onopen = () => {
-          console.log('WebSocket connected');
-          setConnectionStatus('connected');
-          wsConnectionAttempts = 0; // Reset counter on successful connection
-        };
-        
-        socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'value' && !isLocked) {
-              const newValue = data.value;
-              // Only update if value changed
-              if (newValue !== lastValueRef.current) {
-                const direction = newValue > lastValueRef.current ? 'right' : 'left';
-                setRotationDirection(direction);
-                setRate(newValue);
-                onRateChange(newValue);
-                lastValueRef.current = newValue;
-                
-                // Visual feedback
-                setIsRotating(true);
-                setTimeout(() => {
-                  setIsRotating(false);
-                  setRotationDirection(null);
-                }, 200);
-              }
-            }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+        const data = JSON.parse(event.data);
+        if (data.type === 'value' && !isLocked) {
+          if (data.value !== rate) {
+            setRate(data.value);
+            onRateChange(data.value);
+            
+            // Visual feedback for rotation
+            setIsRotating(true);
+            setTimeout(() => setIsRotating(false), 300);
           }
-        };
-        
-        socket.onclose = () => {
-          console.log('WebSocket disconnected');
-          setConnectionStatus('disconnected');
-          
-          // Schedule reconnection attempt
-          if (reconnectTimerRef.current === null) {
-            reconnectTimerRef.current = window.setTimeout(() => {
-              reconnectTimerRef.current = null;
-              setupWebSocket();
-            }, delay) as unknown as number;
-          }
-        };
-        
-        socket.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          // Let onclose handle reconnection
-        };
-      } catch (error) {
-        console.error('Error creating WebSocket:', error);
-        setConnectionStatus('disconnected');
-        
-        // Schedule reconnection attempt
-        if (reconnectTimerRef.current === null) {
-          reconnectTimerRef.current = window.setTimeout(() => {
-            reconnectTimerRef.current = null;
-            setupWebSocket();
-          }, delay) as unknown as number;
         }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
       }
-    }, delay > 0 ? delay : 0);
+    };
+    
+    newWs.onclose = () => {
+      console.log('Disconnected from encoder WebSocket server');
+      setConnectionStatus('disconnected');
+      
+      // Automatically try to reconnect
+      if (reconnectTimerRef.current === null) {
+        reconnectTimerRef.current = window.setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connectWebSocket();
+        }, 5000); // Try to reconnect after 5 seconds
+      }
+    };
+    
+    newWs.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      newWs.close();
+    };
   };
   
-  // Send value to server
+  // Send value to WebSocket server
   const sendValueToServer = (newValue: number) => {
-    if (sharedWebSocket && sharedWebSocket.readyState === WebSocket.OPEN) {
-      sharedWebSocket.send(JSON.stringify({ type: 'setValue', value: newValue }));
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'setValue', value: newValue }));
     }
   };
   
-  // Set up WebSocket on component mount
+  // Initialize WebSocket connection
   useEffect(() => {
-    setupWebSocket();
+    connectWebSocket();
     
-    // Clean up on unmount
+    // Clean up on component unmount
     return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
       if (reconnectTimerRef.current !== null) {
         clearTimeout(reconnectTimerRef.current);
       }
     };
   }, []);
   
-  // Handle manual rotation buttons
-  const handleRotate = (direction: 'left' | 'right') => {
+  // Simulate encoder rotation (for UI only)
+  const handleRotate = (direction: number) => {
     if (isLocked) {
       onLockError();
       return;
     }
     
     setIsRotating(true);
-    setRotationDirection(direction);
     
-    // Calculate new rate based on direction - always change by 1
-    const newRate = direction === 'right' 
-      ? Math.min(maxRate, rate + 1)
-      : Math.max(minRate, rate - 1);
+    // Calculate new rate based on current rate and direction
+    let newRate;
+    if (rate < 50) {
+      newRate = rate + (direction * 5);
+    } else if (rate < 100) {
+      newRate = rate + (direction * 2);
+    } else if (rate < 170) {
+      newRate = rate + (direction * 5);
+    } else {
+      newRate = rate + (direction * 6);
+    }
+    
+    // Clamp between min and max
+    newRate = Math.max(minRate, Math.min(maxRate, newRate));
     
     // Update local state
     setRate(newRate);
     onRateChange(newRate);
-    lastValueRef.current = newRate;
     
     // Send to server
     sendValueToServer(newRate);
     
     // Reset rotation visual feedback
-    setTimeout(() => {
-      setIsRotating(false);
-      setRotationDirection(null);
-    }, 200);
+    setTimeout(() => setIsRotating(false), 300);
   };
   
-  // Handle reset button press
+  // Handle button press (reset to 30)
   const handleButtonPress = () => {
     if (isLocked) {
       onLockError();
@@ -187,7 +152,6 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
     const resetValue = 30;
     setRate(resetValue);
     onRateChange(resetValue);
-    lastValueRef.current = resetValue;
     
     // Send to server
     sendValueToServer(resetValue);
@@ -257,13 +221,10 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
           <div className="flex-1 pl-4">
             <div className="flex items-center">
               <h2 className="text-xl text-gray-800">Rate</h2>
-              <div 
-                className={`ml-2 w-3 h-3 rounded-full transition-colors duration-300 ${
-                  connectionStatus === 'connected' ? 'bg-green-500' : 
-                  connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
-                }`} 
-                title={`Status: ${connectionStatus}`}
-              />
+              <div className={`ml-2 w-3 h-3 rounded-full ${
+                connectionStatus === 'connected' ? 'bg-green-500' : 
+                connectionStatus === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+              }`} />
             </div>
             <p className="text-sm text-gray-500">CLK: GPIO27, DT: GPIO22, BTN: GPIO25</p>
           </div>
@@ -307,7 +268,7 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
                   stroke={color}
                   strokeWidth={stroke}
                   strokeLinecap="round"
-                  className={`transition-all duration-150 ease-out ${isRotating ? rotationDirection === 'right' ? 'animate-pulse' : 'animate-pulse' : ''}`}
+                  className={`transition-all duration-150 ease-out ${isRotating ? 'animate-pulse' : ''}`}
                 />
                 
                 {/* Current value */}
@@ -327,11 +288,6 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
               <span className="text-2xl font-bold" style={{ color }}>
                 {rate} ppm
               </span>
-              {isRotating && rotationDirection && (
-                <span className="ml-2 text-sm">
-                  {rotationDirection === 'right' ? '▶' : '◀'}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -351,23 +307,23 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
         
         <div className="flex justify-between items-center mb-4">
           <button
-            onClick={() => handleRotate('left')}
+            onClick={() => handleRotate(-1)}
             className={`px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={isLocked}
           >
-            ◀ Rotate Left (-1)
+            ◀ Rotate Left
           </button>
           <div className="text-xs text-gray-500">
             {connectionStatus === 'connected' ? 'Connected to Hardware' : 
              connectionStatus === 'connecting' ? 'Connecting to Hardware...' : 
-             'Reconnecting...'}
+             'Hardware Disconnected - Retrying...'}
           </div>
           <button
-            onClick={() => handleRotate('right')}
+            onClick={() => handleRotate(1)}
             className={`px-3 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={isLocked}
           >
-            Rotate Right (+1) ▶
+            Rotate Right ▶
           </button>
         </div>
         
@@ -395,7 +351,6 @@ const EncoderRateControl: React.FC<EncoderRateControlProps> = ({
               const newValue = parseInt(e.target.value);
               setRate(newValue);
               onRateChange(newValue);
-              lastValueRef.current = newValue;
               sendValueToServer(newValue);
             }}
             className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
