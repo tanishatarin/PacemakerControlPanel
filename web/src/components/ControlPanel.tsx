@@ -369,6 +369,8 @@ import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
 import { startEncoderPolling, checkEncoderStatus } from '../utils/encoderApi';
+import HardwareDebugPanel from './HardwareDebugPanel';
+
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -699,6 +701,9 @@ const ControlPanel: React.FC = () => {
   // Main control panel UI
   return (
     <div className="max-w-2xl mx-auto p-8 bg-gray-50 min-h-screen">
+      <HardwareDebugPanel isVisible={true} /> 
+      {/* remove above line later  */}
+
       {/* Battery and Mode Header */}
       <BatteryHeader
         batteryLevel={batteryLevel}
