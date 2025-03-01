@@ -358,16 +358,17 @@
 
 // export default ControlPanel;
 
+
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
 import CircularControl from './CircularControl';
-import EncoderRateControl from './EncoderRateControl'; // Import the hardware-connected component
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
-import ECGVisualizer from './ECGVisualizer';
+import { startEncoderPolling, checkEncoderStatus } from '../utils/encoderApi';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -395,6 +396,9 @@ const ControlPanel: React.FC = () => {
   const [showVVISettings, setShowVVISettings] = useState(false);
   const [showDOOSettings, setShowDOOSettings] = useState(false);
   
+  // Encoder API connection state
+  const [encoderConnected, setEncoderConnected] = useState(false);
+  
   // DDD Mode specific states
   const [dddSettings, setDddSettings] = useState({
     aSensitivity: 0.5,
@@ -411,6 +415,43 @@ const ControlPanel: React.FC = () => {
   
   const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
+  
+  // Check encoder connection on startup
+  useEffect(() => {
+    const checkConnection = async () => {
+      const isConnected = await checkEncoderStatus();
+      setEncoderConnected(isConnected);
+      
+      if (isConnected) {
+        console.log('Connected to Raspberry Pi encoder');
+      } else {
+        console.log('Could not connect to Raspberry Pi encoder');
+      }
+    };
+    
+    checkConnection();
+  }, []);
+  
+  // Start encoder polling if connected
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    console.log('Starting encoder polling');
+    
+    const stopPolling = startEncoderPolling((data) => {
+      // Only update values if not locked
+      if (!isLocked) {
+        setRate(data.rate);
+        setAOutput(data.a_output);
+        setVOutput(data.v_output);
+      }
+    });
+    
+    return () => {
+      console.log('Stopping encoder polling');
+      stopPolling();
+    };
+  }, [encoderConnected, isLocked]);
 
   // Auto-lock timer management
   const resetAutoLockTimer = () => {
@@ -666,6 +707,13 @@ const ControlPanel: React.FC = () => {
         onBatteryChange={setBatteryLevel}
       />
 
+      {/* Encoder Connection Status */}
+      {encoderConnected && (
+        <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
+          Physical encoder connected and active
+        </div>
+      )}
+
       {/* Emergency Mode Button */}
       <button
         onClick={handleEmergencyMode}
@@ -674,19 +722,19 @@ const ControlPanel: React.FC = () => {
         DOO Emergency Mode
       </button>
 
-      {/* Main Controls with hardware-connected EncoderRateControl for Rate */}
+      {/* Main Controls */}
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
-        {/* Replace CircularControl with EncoderRateControl for Rate */}
-        <EncoderRateControl
-          onRateChange={setRate}
+        <CircularControl
+          title="Rate"
+          value={rate}
+          unit="ppm"
+          onChange={setRate}
           isLocked={isLocked}
+          minValue={30}
+          maxValue={200}
           onLockError={handleLockError}
-          initialRate={rate}
-          minRate={30}
-          maxRate={200}
         />
         
-        {/* Keep original CircularControl for A.Output and V.Output */}
         <CircularControl
           title="A. Output"
           value={aOutput}
@@ -709,15 +757,6 @@ const ControlPanel: React.FC = () => {
           maxValue={25}
           onLockError={handleLockError}
           isDimmed={vOutput === 0}
-        />
-      </div>
-
-      {/* ECG Visualizer Section */}
-      <div className="mb-6">
-        <ECGVisualizer
-          rate={rate}
-          aOutput={aOutput}
-          vOutput={vOutput}
         />
       </div>
 
