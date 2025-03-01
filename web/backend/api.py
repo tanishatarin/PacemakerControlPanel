@@ -38,12 +38,13 @@ CLK_PIN = 27  # Encoder clock pin
 DT_PIN = 22   # Encoder data pin
 SW_PIN = 25   # Encoder button/switch pin
 
-# State variables
+# State variables - will be updated from saved file or frontend
 pacemaker_state = {
     "rate": 80,
     "a_output": 10.0,
     "v_output": 10.0,
-    "active_control": "rate"  # Which control is being adjusted
+    "active_control": "rate",  # Which control is being adjusted
+    "last_update_source": "init"  # Track where updates come from
 }
 
 # Control limits
@@ -59,11 +60,17 @@ encoder_state = {
     "last_button_time": 0,
     "is_running": False,
     "rotation_count": 0,
-    "button_press_count": 0
+    "button_press_count": 0,
+    "last_encoder_update": 0  # Timestamp of last encoder-driven update
 }
 
 # Mutex for thread-safe state updates
 state_lock = threading.Lock()
+
+# Flag to prevent feedback loops between UI and hardware
+frontend_controlled = False
+last_frontend_update = 0
+UPDATE_COOLDOWN = 0.5  # seconds to wait after frontend update before processing encoder
 
 # Counter for debugging
 request_counter = 0
@@ -108,6 +115,12 @@ def button_callback(channel):
         current_time = time.time()
         if current_time - encoder_state["last_button_time"] < 0.3:
             return
+            
+        # Ignore button press if frontend recently updated
+        if current_time - last_frontend_update < UPDATE_COOLDOWN:
+            logger.info("Ignoring button press due to recent frontend update")
+            return
+            
         encoder_state["last_button_time"] = current_time
         encoder_state["button_press_count"] += 1
         
@@ -119,11 +132,19 @@ def button_callback(channel):
         else:
             pacemaker_state["active_control"] = "rate"
         
+        pacemaker_state["last_update_source"] = "button"
         logger.info(f"Button pressed (count: {encoder_state['button_press_count']}) - Active control switched to: {pacemaker_state['active_control']}")
 
 # Function to read encoder and update state
 def read_encoder():
     if not RPI_AVAILABLE:
+        return
+    
+    global last_frontend_update
+    
+    # Ignore encoder if frontend recently updated
+    current_time = time.time()
+    if current_time - last_frontend_update < UPDATE_COOLDOWN:
         return
     
     clk = GPIO.input(CLK_PIN)
@@ -141,12 +162,12 @@ def read_encoder():
         logger.info(f"Encoder rotation detected (count: {encoder_state['rotation_count']}) - CLK={clk}, DT={dt}, Direction={direction}")
         
         with state_lock:
-            adjust_value(direction)
+            adjust_value(direction, "encoder")
     
     encoder_state["last_clk"] = clk
 
 # Adjust the active control value
-def adjust_value(direction):
+def adjust_value(direction, source="unknown"):
     control = pacemaker_state["active_control"]
     old_value = pacemaker_state[control]
     
@@ -168,7 +189,14 @@ def adjust_value(direction):
         new_value = pacemaker_state["v_output"] + (direction * step)
         pacemaker_state["v_output"] = max(V_OUTPUT_LIMITS[0], min(V_OUTPUT_LIMITS[1], new_value))
     
-    logger.info(f"{control.upper()} adjusted: {old_value} → {pacemaker_state[control]} ({direction > 0 and 'increase' or 'decrease'})")
+    # Only log if the value actually changed
+    if old_value != pacemaker_state[control]:
+        pacemaker_state["last_update_source"] = source
+        logger.info(f"{control.upper()} adjusted by {source}: {old_value} → {pacemaker_state[control]} ({direction > 0 and 'increase' or 'decrease'})")
+        
+        # Update timestamp if this was from encoder
+        if source == "encoder":
+            encoder_state["last_encoder_update"] = time.time()
 
 # API routes
 @app.route('/api/status', methods=['GET'])
@@ -189,7 +217,8 @@ def get_status():
             "button": None  # Can't read continuously due to event detection
         },
         "rotation_count": encoder_state["rotation_count"],
-        "button_press_count": encoder_state["button_press_count"]
+        "button_press_count": encoder_state["button_press_count"],
+        "last_encoder_update": encoder_state["last_encoder_update"]
     }
     
     if RPI_AVAILABLE:
@@ -202,7 +231,8 @@ def get_status():
     response = {
         "status": "running",
         "hardware": hardware_status,
-        "request_counter": request_counter
+        "request_counter": request_counter,
+        "last_update_source": pacemaker_state["last_update_source"]
     }
     return jsonify(response)
 
@@ -215,31 +245,42 @@ def get_controls():
     with state_lock:
         controls_copy = pacemaker_state.copy()
     
-    if request_counter % 10 == 0:  # Log every 10th request
-        logger.info(f"Controls request #{request_counter} received - Current values: rate={controls_copy['rate']}, a_output={controls_copy['a_output']}, v_output={controls_copy['v_output']}")
+    if request_counter % 20 == 0:  # Log less frequently
+        logger.info(f"Controls request #{request_counter} received - Values: rate={controls_copy['rate']}, a_output={controls_copy['a_output']}, v_output={controls_copy['v_output']}")
     
     return jsonify(controls_copy)
 
 @app.route('/api/controls', methods=['POST'])
 def set_controls():
     """Update the pacemaker control values from the frontend"""
+    global last_frontend_update
+    
     data = request.json
     logger.info(f"POST request received to update controls: {data}")
     
     with state_lock:
-        if "rate" in data:
+        changed = False
+        
+        if "rate" in data and abs(pacemaker_state["rate"] - data["rate"]) > 0.01:
             pacemaker_state["rate"] = max(RATE_LIMITS[0], min(RATE_LIMITS[1], data["rate"]))
+            changed = True
         
-        if "a_output" in data:
+        if "a_output" in data and abs(pacemaker_state["a_output"] - data["a_output"]) > 0.01:
             pacemaker_state["a_output"] = max(A_OUTPUT_LIMITS[0], min(A_OUTPUT_LIMITS[1], data["a_output"]))
+            changed = True
         
-        if "v_output" in data:
+        if "v_output" in data and abs(pacemaker_state["v_output"] - data["v_output"]) > 0.01:
             pacemaker_state["v_output"] = max(V_OUTPUT_LIMITS[0], min(V_OUTPUT_LIMITS[1], data["v_output"]))
+            changed = True
         
-        if "active_control" in data and data["active_control"] in ["rate", "a_output", "v_output"]:
+        if "active_control" in data and data["active_control"] in ["rate", "a_output", "v_output"] and pacemaker_state["active_control"] != data["active_control"]:
             pacemaker_state["active_control"] = data["active_control"]
+            changed = True
         
-        logger.info(f"Controls updated to: {pacemaker_state}")
+        if changed:
+            pacemaker_state["last_update_source"] = "frontend"
+            last_frontend_update = time.time()
+            logger.info(f"Controls updated from frontend to: {pacemaker_state}")
     
     return jsonify({"success": True, "controls": pacemaker_state})
 
@@ -254,6 +295,12 @@ def debug_hardware():
             "clk_pin": CLK_PIN,
             "dt_pin": DT_PIN,
             "sw_pin": SW_PIN
+        },
+        "update_timing": {
+            "last_frontend_update": last_frontend_update,
+            "last_encoder_update": encoder_state["last_encoder_update"],
+            "update_cooldown": UPDATE_COOLDOWN,
+            "current_time": time.time()
         }
     }
     
@@ -282,7 +329,7 @@ def simulate_rotation():
     logger.info(f"Simulating encoder rotation: direction={direction}")
     
     with state_lock:
-        adjust_value(direction)
+        adjust_value(direction, "simulation")
     
     return jsonify({
         "success": True,
@@ -301,23 +348,25 @@ def mock_encoder_thread():
         import keyboard
         
         def on_tab():
-            if pacemaker_state["active_control"] == "rate":
-                pacemaker_state["active_control"] = "a_output"
-            elif pacemaker_state["active_control"] == "a_output":
-                pacemaker_state["active_control"] = "v_output"
-            else:
-                pacemaker_state["active_control"] = "rate"
-            logger.info(f"Mock: Active control switched to {pacemaker_state['active_control']}")
+            with state_lock:
+                if pacemaker_state["active_control"] == "rate":
+                    pacemaker_state["active_control"] = "a_output"
+                elif pacemaker_state["active_control"] == "a_output":
+                    pacemaker_state["active_control"] = "v_output"
+                else:
+                    pacemaker_state["active_control"] = "rate"
+                pacemaker_state["last_update_source"] = "mock_button"
+                logger.info(f"Mock: Active control switched to {pacemaker_state['active_control']}")
         
         def on_up():
             with state_lock:
-                adjust_value(1)
-            logger.info(f"Mock: Increased {pacemaker_state['active_control']} to {pacemaker_state[pacemaker_state['active_control']]}")
+                adjust_value(1, "mock_encoder")
+                logger.info(f"Mock: Increased {pacemaker_state['active_control']} to {pacemaker_state[pacemaker_state['active_control']]}")
         
         def on_down():
             with state_lock:
-                adjust_value(-1)
-            logger.info(f"Mock: Decreased {pacemaker_state['active_control']} to {pacemaker_state[pacemaker_state['active_control']]}")
+                adjust_value(-1, "mock_encoder")
+                logger.info(f"Mock: Decreased {pacemaker_state['active_control']} to {pacemaker_state[pacemaker_state['active_control']]}")
         
         keyboard.on_press_key("tab", lambda _: on_tab())
         keyboard.on_press_key("up", lambda _: on_up())
@@ -334,9 +383,10 @@ def mock_encoder_thread():
         # Fallback to periodic value changes for testing
         while True:
             time.sleep(5)
-            with state_lock:
-                logger.info("Mock: Simulating automatic value change for testing")
-                adjust_value(1)
+            # Don't auto-adjust in mock mode - makes it hard to debug
+            # with state_lock:
+            #    logger.info("Mock: Simulating automatic value change for testing")
+            #    adjust_value(1, "mock_auto")
 
 # Main encoder reading thread
 def encoder_thread():
@@ -387,8 +437,13 @@ def start_app():
 def save_state():
     """Save current state to a file"""
     try:
+        # Create a clean copy without internal fields
+        save_data = pacemaker_state.copy()
+        if "last_update_source" in save_data:
+            del save_data["last_update_source"]
+            
         with open('pacemaker_state.json', 'w') as f:
-            json.dump(pacemaker_state, f)
+            json.dump(save_data, f)
     except Exception as e:
         logger.error(f"Error saving state: {e}")
 

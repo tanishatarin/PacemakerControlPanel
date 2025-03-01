@@ -360,6 +360,13 @@
 
 
 
+
+
+
+
+
+
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
 import CircularControl from './CircularControl';
@@ -368,9 +375,13 @@ import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
-import { startEncoderPolling, checkEncoderStatus } from '../utils/encoderApi';
 import HardwareDebugPanel from './HardwareDebugPanel';
-
+import { 
+  startEncoderPolling, 
+  checkEncoderStatus, 
+  updateControls, 
+  ApiStatus 
+} from '../utils/encoderApi';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -398,8 +409,10 @@ const ControlPanel: React.FC = () => {
   const [showVVISettings, setShowVVISettings] = useState(false);
   const [showDOOSettings, setShowDOOSettings] = useState(false);
   
-  // Encoder API connection state
+  // Hardware connection state
   const [encoderConnected, setEncoderConnected] = useState(false);
+  const [hardwareStatus, setHardwareStatus] = useState<ApiStatus | null>(null);
+  const [localControlActive, setLocalControlActive] = useState(false);
   
   // DDD Mode specific states
   const [dddSettings, setDddSettings] = useState({
@@ -417,22 +430,59 @@ const ControlPanel: React.FC = () => {
   
   const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
+  const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
   
   // Check encoder connection on startup
   useEffect(() => {
     const checkConnection = async () => {
-      const isConnected = await checkEncoderStatus();
-      setEncoderConnected(isConnected);
-      
-      if (isConnected) {
-        console.log('Connected to Raspberry Pi encoder');
+      const status = await checkEncoderStatus();
+      if (status) {
+        setEncoderConnected(true);
+        setHardwareStatus(status);
+        console.log('Connected to encoder API:', status);
       } else {
-        console.log('Could not connect to Raspberry Pi encoder');
+        setEncoderConnected(false);
+        console.log('Could not connect to encoder API');
       }
     };
     
     checkConnection();
+    
+    // Also check periodically
+    const interval = setInterval(checkConnection, 5000);
+    return () => clearInterval(interval);
   }, []);
+  
+  // Handle local value changes and sync to hardware
+  const handleLocalValueChange = async (key: string, value: number) => {
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    // Update local state
+    if (key === 'rate') {
+      setRate(value);
+    } else if (key === 'a_output') {
+      setAOutput(value);
+    } else if (key === 'v_output') {
+      setVOutput(value);
+    }
+    
+    // Flag that we initiated this change
+    lastUpdateRef.current = { source: 'frontend', time: Date.now() };
+    setLocalControlActive(true);
+    
+    // Send to hardware if connected
+    if (encoderConnected) {
+      await updateControls({ [key]: value });
+      
+      // Allow hardware control again after a short delay
+      setTimeout(() => {
+        setLocalControlActive(false);
+      }, 500);
+    }
+  };
   
   // Start encoder polling if connected
   useEffect(() => {
@@ -440,20 +490,49 @@ const ControlPanel: React.FC = () => {
     
     console.log('Starting encoder polling');
     
-    const stopPolling = startEncoderPolling((data) => {
-      // Only update values if not locked
-      if (!isLocked) {
-        setRate(data.rate);
-        setAOutput(data.a_output);
-        setVOutput(data.v_output);
-      }
-    });
+    const stopPolling = startEncoderPolling(
+      // Control values callback
+      (data) => {
+        // Don't update UI from hardware while user is actively controlling
+        if (localControlActive) {
+          console.log('Ignoring hardware update during local control');
+          return;
+        }
+        
+        // Update local state from hardware
+        if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
+          setRate(data.rate);
+        }
+        
+        if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
+          setAOutput(data.a_output);
+        }
+        
+        if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
+          setVOutput(data.v_output);
+        }
+        
+        // Update which control is active
+        if (data.active_control) {
+          // Implementation depends on how you want to visualize the active control
+          console.log('Active control from hardware:', data.active_control);
+        }
+      },
+      // Status callback
+      (status) => {
+        setHardwareStatus(status);
+      },
+      // Poll interval
+      100,
+      // Skip updates from these sources
+      ['frontend']
+    );
     
     return () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, isLocked]);
+  }, [encoderConnected, rate, aOutput, vOutput, localControlActive]);
 
   // Auto-lock timer management
   const resetAutoLockTimer = () => {
@@ -527,15 +606,58 @@ const ControlPanel: React.FC = () => {
 
   // Handle DDD Settings changes
   const handleDDDSettingsChange = (key: string, value: any) => {
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
     setDddSettings(prev => ({
       ...prev,
       [key]: value
     }));
+    
+    // If connected to hardware, send updates for sensitivity values
+    if (encoderConnected && (key === 'aSensitivity' || key === 'vSensitivity')) {
+      // Flag that we initiated this change
+      lastUpdateRef.current = { source: 'frontend', time: Date.now() };
+      setLocalControlActive(true);
+      
+      updateControls({ 
+        active_control: key === 'aSensitivity' ? 'a_output' : 'v_output'
+      });
+      
+      // Allow hardware control again after a short delay
+      setTimeout(() => {
+        setLocalControlActive(false);
+      }, 500);
+    }
   };
 
   // Handle VVI sensitivity change
   const handleVVISensitivityChange = (value: number) => {
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
     setVviSensitivity(value);
+    
+    // If connected to hardware, send update
+    if (encoderConnected) {
+      // Flag that we initiated this change
+      lastUpdateRef.current = { source: 'frontend', time: Date.now() };
+      setLocalControlActive(true);
+      
+      updateControls({ 
+        active_control: 'v_output',
+        v_output: value  // Might need adjustment depending on your implementation
+      });
+      
+      // Allow hardware control again after a short delay
+      setTimeout(() => {
+        setLocalControlActive(false);
+      }, 500);
+    }
   };
 
   // Handle mode navigation
@@ -610,6 +732,11 @@ const ControlPanel: React.FC = () => {
   const handleEmergencyMode = () => {
     resetAutoLockTimer();
     
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
     // Set emergency parameters
     setRate(80);
     setAOutput(20.0);
@@ -624,6 +751,15 @@ const ControlPanel: React.FC = () => {
     setShowDOOSettings(true);
     setShowDDDSettings(false);
     setShowVVISettings(false);
+    
+    // If connected to hardware, send emergency mode settings
+    if (encoderConnected) {
+      updateControls({
+        rate: 80,
+        a_output: 20.0,
+        v_output: 25.0
+      });
+    }
   };
 
   // Handle pause button states
@@ -647,7 +783,7 @@ const ControlPanel: React.FC = () => {
     resetAutoLockTimer();
     setIsLocked(!isLocked);
   };
-
+  
   // Render the appropriate mode panel
   const renderModePanel = () => {
     if (showDDDSettings) {
@@ -701,9 +837,6 @@ const ControlPanel: React.FC = () => {
   // Main control panel UI
   return (
     <div className="max-w-2xl mx-auto p-8 bg-gray-50 min-h-screen">
-      <HardwareDebugPanel isVisible={true} /> 
-      {/* remove above line later  */}
-
       {/* Battery and Mode Header */}
       <BatteryHeader
         batteryLevel={batteryLevel}
@@ -715,14 +848,18 @@ const ControlPanel: React.FC = () => {
       {/* Encoder Connection Status */}
       {encoderConnected && (
         <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
-          Physical encoder connected and active
+          Physical encoder connected and active {hardwareStatus?.hardware.rotation_count 
+            ? `- Rotations: ${hardwareStatus.hardware.rotation_count}` 
+            : ''}
         </div>
       )}
 
       {/* Emergency Mode Button */}
       <button
         onClick={handleEmergencyMode}
-        className="w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors"
+        className={`w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors
+          ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
+        `}
       >
         DOO Emergency Mode
       </button>
@@ -733,7 +870,7 @@ const ControlPanel: React.FC = () => {
           title="Rate"
           value={rate}
           unit="ppm"
-          onChange={setRate}
+          onChange={(value) => handleLocalValueChange('rate', value)}
           isLocked={isLocked}
           minValue={30}
           maxValue={200}
@@ -744,7 +881,7 @@ const ControlPanel: React.FC = () => {
           title="A. Output"
           value={aOutput}
           unit="mA"
-          onChange={setAOutput}
+          onChange={(value) => handleLocalValueChange('a_output', value)}
           isLocked={isLocked}
           minValue={0}
           maxValue={20}
@@ -756,7 +893,7 @@ const ControlPanel: React.FC = () => {
           title="V. Output"
           value={vOutput}
           unit="mA"
-          onChange={setVOutput}
+          onChange={(value) => handleLocalValueChange('v_output', value)}
           isLocked={isLocked}
           minValue={0}
           maxValue={25}
@@ -806,6 +943,9 @@ const ControlPanel: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Debug Panel */}
+      <HardwareDebugPanel isVisible={true} />
 
       {/* Notifications */}
       <Notifications
