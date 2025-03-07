@@ -382,6 +382,8 @@ import {
   updateControls, 
   ApiStatus 
 } from '../utils/encoderApi';
+import HardwareRateControl from './HardwareRateControl';
+
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -866,7 +868,7 @@ const ControlPanel: React.FC = () => {
 
       {/* Main Controls */}
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
-        <CircularControl
+        {/* <CircularControl
           title="Rate"
           value={rate}
           unit="ppm"
@@ -874,6 +876,12 @@ const ControlPanel: React.FC = () => {
           isLocked={isLocked}
           minValue={30}
           maxValue={200}
+          onLockError={handleLockError}
+        /> */}
+        <HardwareRateControl
+          value={rate}
+          onChange={setRate}
+          isLocked={isLocked}
           onLockError={handleLockError}
         />
         
