@@ -1,5 +1,3 @@
-// src/utils/encoderApi.ts
-
 /**
  * API utilities for connecting to the Raspberry Pi encoder
  * with bidirectional control support
@@ -22,12 +20,17 @@ export interface EncoderControlData {
 export interface HardwareStatus {
   gpio_available: boolean;
   encoder_running: boolean;
-  pin_values: {
+  rate_encoder?: {
     clk: number | null;
     dt: number | null;
     button: number | null;
+    rotation_count: number;
   };
-  rotation_count: number;
+  a_output_encoder?: {
+    clk: number | null;
+    dt: number | null;
+    rotation_count: number;
+  };
   button_press_count: number;
   last_encoder_update: number;
 }
@@ -170,11 +173,12 @@ export async function getHardwareDebugInfo(): Promise<any> {
 
 /**
  * Simulate an encoder rotation for testing
+ * @param encoderType Which encoder to simulate (rate or a_output)
  * @param direction 1 for clockwise, -1 for counter-clockwise
  */
-export async function simulateRotation(direction: 1 | -1): Promise<boolean> {
+export async function simulateRotation(encoderType: 'rate' | 'a_output', direction: 1 | -1): Promise<boolean> {
   try {
-    const response = await fetch(`${API_URL}/debug/simulate?direction=${direction}`, {
+    const response = await fetch(`${API_URL}/debug/simulate?encoder=${encoderType}&direction=${direction}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -187,7 +191,7 @@ export async function simulateRotation(direction: 1 | -1): Promise<boolean> {
     
     return true;
   } catch (error) {
-    console.error('Error simulating rotation:', error);
+    console.error(`Error simulating ${encoderType} rotation:`, error);
     return false;
   }
 }

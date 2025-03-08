@@ -3,8 +3,8 @@
 #### Terminal 1 - GPIO WebSocket Server:
 1. start a virtual environment:
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
+    python3 -m venv myenv
+    source myenv/bin/activate
     install the required packages:
     pip install -r requirements.txt
     ```
