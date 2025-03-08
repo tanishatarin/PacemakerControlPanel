@@ -375,7 +375,6 @@ import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
-import HardwareDebugPanel from './HardwareDebugPanel';
 import { 
   startEncoderPolling, 
   checkEncoderStatus, 
@@ -951,9 +950,6 @@ const ControlPanel: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Debug Panel */}
-      <HardwareDebugPanel isVisible={true} />
 
       {/* Notifications */}
       <Notifications
