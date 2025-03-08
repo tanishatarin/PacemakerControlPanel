@@ -524,17 +524,14 @@ const ControlPanel: React.FC = () => {
         onBatteryChange={setBatteryLevel}
       />
 
-      {/* Encoder Connection Status */}
-      {encoderConnected && (
-        <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
-          Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder?.rotation_count !== undefined
-            ? `- Rate rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
-            : ''}{hardwareStatus?.hardware?.a_output_encoder?.rotation_count !== undefined
-            ? `, A. Output rotations: ${hardwareStatus.hardware.a_output_encoder.rotation_count}` 
-            : ''}
-        </div>
-      )}
-
+    {/* Encoder Connection Status */}
+    {encoderConnected && (
+      <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
+        Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
+          ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
+          : ''}
+      </div>
+    )}
 
       {/* Emergency Mode Button */}
       <button
@@ -550,24 +547,18 @@ const ControlPanel: React.FC = () => {
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
         
       <HardwareRateControl
-        value={rate}
-        onChange={setRate}
-        isLocked={isLocked}
-        onLockError={handleLockError}
-        hardwareStatus={hardwareStatus}
-        encoderConnected={encoderConnected}
-        localControlActive={localControlActive}
-      />
-      
-      <HardwareAOutputControl
-        value={aOutput}
-        onChange={setAOutput}
-        isLocked={isLocked}
-        onLockError={handleLockError}
-        hardwareStatus={hardwareStatus}
-        encoderConnected={encoderConnected}
-        localControlActive={localControlActive}
-      />
+          value={rate}
+          onChange={setRate}
+          isLocked={isLocked}
+          onLockError={handleLockError}
+        />
+        
+        <HardwareAOutputControl
+          value={aOutput}
+          onChange={setAOutput}
+          isLocked={isLocked}
+          onLockError={handleLockError}
+        />
         
         <CircularControl
           title="V. Output"
