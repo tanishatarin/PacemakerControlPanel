@@ -8,7 +8,7 @@ CORS(app)  # Enable CORS for all routes
 
 # Set up the Rate rotary encoder (pins defined as in your example)
 rate_encoder = RotaryEncoder(27, 22, max_steps=200, wrap=False)
-rate_button = Button(25)
+# rate_button = Button(25) -- getting rid of to see if needed
 
 # Initial value
 rate_encoder.steps = 80
@@ -34,7 +34,7 @@ def reset_rate():
 
 # Attach event listeners
 rate_encoder.when_rotated = update_rate
-rate_button.when_pressed = reset_rate
+# rate_button.when_pressed = reset_rate --  -- getting rid of to see if needed
 
 # API endpoints
 @app.route('/api/rate', methods=['GET'])

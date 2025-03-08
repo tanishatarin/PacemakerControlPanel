@@ -24,3 +24,16 @@ pnpm dev
 ```
 Open the browser and navigate to <http://localhost:5173/>. 
 
+
+
+
+### GPIO Pins for Encoders 
+
+#### Rate:
+Clock 27, DT 22, Push 25 
+
+
+#### A Output: 
+Clock 21, DT 20 
+
+
