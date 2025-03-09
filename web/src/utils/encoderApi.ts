@@ -331,8 +331,8 @@ export async function checkEncoderStatus(): Promise<ApiStatus | null> {
       headers: {
         'Content-Type': 'application/json',
       },
-      // Short timeout to avoid hanging UI
-      signal: AbortSignal.timeout(2000),
+      // Shorter timeout
+      signal: AbortSignal.timeout(1000),
     });
     
     if (response.ok) {
@@ -507,8 +507,27 @@ export function startEncoderPolling(
   ignoreSourceList: string[] = []
 ): () => void {
   let lastSourceRef = { source: 'init', time: Date.now() };
+  let lastLockState: boolean | null = null;
   
-  const poller = setInterval(async () => {
+  // Add a specific interval for checking lock state (more frequent)
+  const lockCheckInterval = 100; // Check lock state every 100ms
+  
+  // Create a dedicated lock state poller
+  const lockPoller = setInterval(async () => {
+    try {
+      const lockState = await getLockState();
+      if (lockState !== null && lockState !== lastLockState) {
+        // If lock state changed, update it immediately
+        lastLockState = lockState;
+        onControlUpdate({ locked: lockState });
+      }
+    } catch (error) {
+      console.error('Error checking lock state:', error);
+    }
+  }, lockCheckInterval);
+  
+  // Main poller for other controls
+  const mainPoller = setInterval(async () => {
     try {
       const status = await checkEncoderStatus();
       
@@ -534,7 +553,9 @@ export function startEncoderPolling(
         controlData.v_output = status.v_output;
       }
       
-      if (status.locked !== undefined) {
+      // We handle lock state separately now, but include it for completeness
+      if (status.locked !== undefined && status.locked !== lastLockState) {
+        lastLockState = status.locked;
         controlData.locked = status.locked;
       }
       
@@ -542,10 +563,12 @@ export function startEncoderPolling(
       const now = Date.now();
       const timeSinceLastUpdate = now - lastSourceRef.time;
       
-      if (
+      const ignoreUpdate = 
         timeSinceLastUpdate < 500 && 
-        ignoreSourceList.includes(lastSourceRef.source)
-      ) {
+        ignoreSourceList.includes(lastSourceRef.source);
+        
+      // Don't ignore lock state updates regardless of source
+      if (ignoreUpdate && !controlData.hasOwnProperty('locked')) {
         return;
       }
       
@@ -559,5 +582,8 @@ export function startEncoderPolling(
   }, interval);
   
   // Return a function to stop polling
-  return () => clearInterval(poller);
+  return () => {
+    clearInterval(mainPoller);
+    clearInterval(lockPoller);
+  };
 }

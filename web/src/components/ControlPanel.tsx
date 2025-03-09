@@ -441,30 +441,69 @@ const ControlPanel: React.FC = () => {
   const handleLockToggle = async () => {
     resetAutoLockTimer();
     
-    // Toggle the lock state locally first
+    // Toggle the lock state locally first for immediate UI feedback
     const newLockState = !isLocked;
     setIsLocked(newLockState);
     
-    // If connected to hardware, sync the state
+    // Update the lock LED state
     if (encoderConnected) {
-        try {
-            // Use the toggleLock function and await its result
-            const hardwareLockState = await toggleLock();
-            
-            // If the hardware returned a different state than what we expected,
-            // update our UI to match the hardware
-            if (hardwareLockState !== null && hardwareLockState !== newLockState) {
-                console.log("Hardware lock state doesn't match UI state, updating UI");
-                setIsLocked(hardwareLockState);
-            }
-        } catch (err) {
-            console.error('Failed to toggle hardware lock state:', err);
-            // Revert UI state if hardware toggle fails
-            setIsLocked(isLocked); // Revert to previous state
-        }
+      try {
+        // Use the toggleLock function but don't wait for it to complete
+        toggleLock().then((hardwareLockState) => {
+          // If the hardware returns a different state than expected, update our UI
+          if (hardwareLockState !== null && hardwareLockState !== newLockState) {
+            console.log("Hardware lock state doesn't match UI state, updating UI");
+            setIsLocked(hardwareLockState);
+          }
+        }).catch(err => {
+          console.error('Failed to toggle hardware lock state:', err);
+          // Revert UI state if hardware toggle fails
+          setIsLocked(isLocked);
+        });
+      } catch (err) {
+        console.error('Failed to toggle hardware lock state:', err);
+        // Revert UI state if hardware toggle fails
+        setIsLocked(isLocked);
+      }
     }
-};
-  
+  };
+
+  // Add a dedicated hook to synchronize lock state from hardware to UI
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    const checkLockState = async () => {
+      try {
+        const lockState = await getLockState();
+        if (lockState !== null && lockState !== isLocked) {
+          setIsLocked(lockState);
+          
+          // If device just unlocked, reset the auto-lock timer
+          if (!lockState && autoLockTimer) {
+            resetAutoLockTimer();
+          }
+          
+          // If device just locked, clear any auto-lock timer
+          if (lockState && autoLockTimer) {
+            clearTimeout(autoLockTimer);
+            setAutoLockTimer(null);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking lock state:', error);
+      }
+    };
+    
+    // Initial check
+    checkLockState();
+    
+    // Check every 100ms for lock state changes
+    const interval = setInterval(checkLockState, 100);
+    
+    return () => clearInterval(interval);
+  }, [encoderConnected, isLocked, autoLockTimer]);
+
+    
   // Render the appropriate mode panel
   const renderModePanel = () => {
     if (showDDDSettings) {
