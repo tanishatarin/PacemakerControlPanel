@@ -441,28 +441,26 @@ const ControlPanel: React.FC = () => {
   const handleLockToggle = async () => {
     resetAutoLockTimer();
     
-    // Determine the desired new state (opposite of current)
-    const desiredState = !isLocked;
+    // Toggle the lock state locally first
+    const newLockState = !isLocked;
+    setIsLocked(newLockState);
     
-    // Immediately update UI for responsiveness
-    setIsLocked(desiredState);
-    
-    // If connected to hardware, tell it exactly what state to use
+    // If connected to hardware, sync the state
     if (encoderConnected) {
         try {
-            // Use the updated toggleLock with explicit state
-            const hardwareLockState = await toggleLock(desiredState);
+            // Use the toggleLock function and await its result
+            const hardwareLockState = await toggleLock();
             
-            // If the hardware returned a state and it doesn't match what we want,
-            // update our UI to match the hardware (unlikely, but a safety measure)
-            if (hardwareLockState !== null && hardwareLockState !== desiredState) {
-                console.log("Hardware lock state doesn't match desired state, updating UI");
+            // If the hardware returned a different state than what we expected,
+            // update our UI to match the hardware
+            if (hardwareLockState !== null && hardwareLockState !== newLockState) {
+                console.log("Hardware lock state doesn't match UI state, updating UI");
                 setIsLocked(hardwareLockState);
             }
         } catch (err) {
-            console.error('Failed to update hardware lock state:', err);
-            // We could revert the UI here, but it might cause flickering
-            // Better to let the next polling cycle correct it if needed
+            console.error('Failed to toggle hardware lock state:', err);
+            // Revert UI state if hardware toggle fails
+            setIsLocked(isLocked); // Revert to previous state
         }
     }
 };
