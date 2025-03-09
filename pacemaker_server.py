@@ -280,7 +280,7 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
-lock_button = Button(17, bounce_time=0.1)  # Set a smaller bounce time
+lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
 
 # Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
 lock_led = LED(18)  # GPIO pin for the LED
@@ -404,10 +404,14 @@ def toggle_lock():
     # Update LED based on lock state
     if is_locked:
         lock_led.on()  # Turn on LED when locked
+        print("Device LOCKED")
     else:
         lock_led.off()  # Turn off LED when unlocked
-        
-    print(f"Lock state toggled: {'Locked' if is_locked else 'Unlocked'}")
+        print("Device UNLOCKED")
+
+# Change the event binding - only toggle on release
+# This ensures a complete click cycle is required
+lock_button.when_released = toggle_lock  # Change from when_pressed to when_released
 
 # Attach event listeners
 rate_encoder.when_rotated = update_rate
@@ -422,18 +426,22 @@ def get_lock():
         'locked': is_locked
     })
 
+# @app.route('/api/lock/toggle', methods=['POST'])
+# def set_lock():
+#     global is_locked
+#     is_locked = not is_locked
+    
+#     # Update LED based on lock state
+#     if is_locked:
+#         lock_led.on()
+#     else:
+#         lock_led.off()
+        
+#     print(f"Lock state toggled via API: {'Locked' if is_locked else 'Unlocked'}")
+#     return jsonify({'success': True, 'locked': is_locked})
 @app.route('/api/lock/toggle', methods=['POST'])
 def set_lock():
-    global is_locked
-    is_locked = not is_locked
-    
-    # Update LED based on lock state
-    if is_locked:
-        lock_led.on()
-    else:
-        lock_led.off()
-        
-    print(f"Lock state toggled via API: {'Locked' if is_locked else 'Unlocked'}")
+    toggle_lock()  # Use the same function to ensure consistent behavior
     return jsonify({'success': True, 'locked': is_locked})
 
 # API endpoints for Rate
