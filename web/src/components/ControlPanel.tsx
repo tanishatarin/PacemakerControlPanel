@@ -12,8 +12,8 @@ import {
   startEncoderPolling, 
   checkEncoderStatus, 
   updateControls, 
-  toggleLock, // Add this import
-  getLockState, // Add this import
+  toggleLock, 
+  getLockState, 
   ApiStatus,
   EncoderControlData
 } from '../utils/encoderApi';

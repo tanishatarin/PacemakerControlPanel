@@ -86,7 +86,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
     const isVisuallyDisabled = (title.includes("Output") && value === 0) || isDimmed;
   
     return (
-      <div className={`mb-8 transition-opacity duration-300 ${isVisuallyDisabled ? 'opacity-40' : 'opacity-100'}`}>
+      <div className={`mb-1 transition-opacity duration-300 ${isVisuallyDisabled ? 'opacity-40' : 'opacity-100'}`}>
         <div className="flex flex-col">
           <div className="flex items-center mb-4">
             <div className="flex-1 pl-4">
@@ -159,46 +159,8 @@ const CircularControl: React.FC<ControlSectionProps> = ({
             </div>
           </div>
         </div>
-        <div className="px-4">
-          <label className="block mb-2 text-sm text-gray-600">Adjust Value:</label>
-          <div className="relative">
-            <div className="h-2 bg-gray-100 rounded-full">
-              <div 
-                className="absolute h-full rounded-full transition-all duration-150 ease-out"
-                style={{ 
-                  width: `${percentage}%`,
-                  backgroundColor: color
-                }}
-              />
-            </div>
-            <input
-              type="range"
-              min={minValue}
-              max={maxValue}
-              value={value}
-              step={getStepSize(value, title)}
-              onChange={(e) => handleChange(parseFloat(e.target.value))}
-              className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-            />
-          </div>
-        </div>
       </div>
     );
   };
-
-const getStepSize = (value: number, title: string) => {
-  if (title === "Rate") {
-    if (value < 50) return 5;
-    if (value < 100) return 2;  
-    if (value < 170) return 5;
-    return 6;
-  } else {
-    // For A. Output and V. Output
-    if (value < 0.4) return 0.1;
-    if (value < 1) return 0.2;
-    if (value < 5) return 0.5;
-    return 1.0;
-  }
-};
 
 export default CircularControl;
