@@ -438,21 +438,32 @@ const ControlPanel: React.FC = () => {
   };
 
   // Toggle lock state
-  const handleLockToggle = () => {
+  const handleLockToggle = async () => {
     resetAutoLockTimer();
     
-    // Toggle local UI state
-    setIsLocked(!isLocked);
+    // Toggle the lock state locally first
+    const newLockState = !isLocked;
+    setIsLocked(newLockState);
     
-    // Add this code to sync with hardware
+    // If connected to hardware, sync the state
     if (encoderConnected) {
-      toggleLock().catch(err => {
-        console.error('Failed to toggle hardware lock state:', err);
-        // Revert UI state if hardware toggle fails
-        setIsLocked(isLocked);
-      });
+        try {
+            // Use the toggleLock function and await its result
+            const hardwareLockState = await toggleLock();
+            
+            // If the hardware returned a different state than what we expected,
+            // update our UI to match the hardware
+            if (hardwareLockState !== null && hardwareLockState !== newLockState) {
+                console.log("Hardware lock state doesn't match UI state, updating UI");
+                setIsLocked(hardwareLockState);
+            }
+        } catch (err) {
+            console.error('Failed to toggle hardware lock state:', err);
+            // Revert UI state if hardware toggle fails
+            setIsLocked(isLocked); // Revert to previous state
+        }
     }
-  };
+};
   
   // Render the appropriate mode panel
   const renderModePanel = () => {

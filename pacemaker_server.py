@@ -262,9 +262,6 @@
 
 
 
-
-
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from gpiozero import RotaryEncoder, Button, LED
@@ -284,6 +281,9 @@ v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
 lock_button = Button(17, bounce_time=0.1)  # Set a smaller bounce time
+
+# Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
+lock_led = LED(18)  # GPIO pin for the LED
 
 # Initial values
 rate_encoder.steps = 80
@@ -400,6 +400,13 @@ def update_v_output():
 def toggle_lock():
     global is_locked
     is_locked = not is_locked
+    
+    # Update LED based on lock state
+    if is_locked:
+        lock_led.on()  # Turn on LED when locked
+    else:
+        lock_led.off()  # Turn off LED when unlocked
+        
     print(f"Lock state toggled: {'Locked' if is_locked else 'Unlocked'}")
 
 # Attach event listeners
@@ -419,6 +426,13 @@ def get_lock():
 def set_lock():
     global is_locked
     is_locked = not is_locked
+    
+    # Update LED based on lock state
+    if is_locked:
+        lock_led.on()
+    else:
+        lock_led.off()
+        
     print(f"Lock state toggled via API: {'Locked' if is_locked else 'Unlocked'}")
     return jsonify({'success': True, 'locked': is_locked})
 
@@ -446,6 +460,22 @@ def set_rate():
         update_rate()
         return jsonify({'success': True, 'value': current_rate})
     return jsonify({'error': 'No value provided'}), 400
+
+@app.route('/api/rate/reset', methods=['POST'])
+def api_reset_rate():
+    # Check if locked
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
+        
+    reset_rate()
+    return jsonify({'success': True, 'value': current_rate})
+
+# Function to reset the rate to default
+def reset_rate():
+    global current_rate
+    rate_encoder.steps = 80
+    current_rate = 80
+    print("Rate reset to 80 ppm!")
 
 # API endpoints for A. Output
 @app.route('/api/a_output', methods=['GET'])
@@ -477,6 +507,23 @@ def set_a_output():
         return jsonify({'success': True, 'value': current_a_output})
     return jsonify({'error': 'No value provided'}), 400
 
+@app.route('/api/a_output/reset', methods=['POST'])
+def api_reset_a_output():
+    # Check if locked
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
+        
+    reset_a_output()
+    return jsonify({'success': True, 'value': current_a_output})
+
+# Function to reset the A. Output to default
+def reset_a_output():
+    global current_a_output, last_a_output_steps
+    a_output_encoder.steps = 100
+    last_a_output_steps = 100
+    current_a_output = 10.0
+    print("A. Output reset to 10.0 mA!")
+
 # API endpoints for V. Output
 @app.route('/api/v_output', methods=['GET'])
 def get_v_output():
@@ -507,6 +554,23 @@ def set_v_output():
         return jsonify({'success': True, 'value': current_v_output})
     return jsonify({'error': 'No value provided'}), 400
 
+@app.route('/api/v_output/reset', methods=['POST'])
+def api_reset_v_output():
+    # Check if locked
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
+        
+    reset_v_output()
+    return jsonify({'success': True, 'value': current_v_output})
+
+# Function to reset the V. Output to default
+def reset_v_output():
+    global current_v_output, last_v_output_steps
+    v_output_encoder.steps = 100
+    last_v_output_steps = 100
+    current_v_output = 10.0
+    print("V. Output reset to 10.0 mA!")
+
 # Health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -518,10 +582,35 @@ def health_check():
         'locked': is_locked
     })
 
+# API endpoint to get hardware information
+@app.route('/api/hardware', methods=['GET'])
+def get_hardware_info():
+    return jsonify({
+        'status': 'ok',
+        'hardware': {
+            'rate_encoder': {
+                'rotation_count': rate_encoder.steps
+            },
+            'a_output_encoder': {
+                'rotation_count': a_output_encoder.steps
+            },
+            'v_output_encoder': {
+                'rotation_count': v_output_encoder.steps
+            }
+        }
+    })
+
 if __name__ == '__main__':
+    # Set initial LED state based on lock state
+    if is_locked:
+        lock_led.on()
+    else:
+        lock_led.off()
+        
     print("Pacemaker Server Started")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
+    print(f"Lock LED on pin GPIO 18")
     app.run(host='0.0.0.0', port=5000, debug=False)

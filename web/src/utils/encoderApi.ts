@@ -357,6 +357,7 @@ export async function toggleLock(): Promise<boolean | null> {
     
     if (response.ok) {
       const data = await response.json();
+      console.log("Lock toggle response:", data); // Add logging for debugging
       return data.locked;
     }
     return null;
