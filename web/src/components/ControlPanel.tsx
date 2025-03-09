@@ -12,6 +12,8 @@ import {
   startEncoderPolling, 
   checkEncoderStatus, 
   updateControls, 
+  toggleLock, // Add this import
+  getLockState, // Add this import
   ApiStatus,
   EncoderControlData
 } from '../utils/encoderApi';
@@ -73,6 +75,18 @@ const ControlPanel: React.FC = () => {
       if (status) {
         setEncoderConnected(true);
         setHardwareStatus(status);
+        
+        // checks lock state 
+        if (status.locked !== undefined) {
+          setIsLocked(status.locked);
+        } else {
+          // If not in status, try to get it directly
+          const lockState = await getLockState();
+          if (lockState !== null) {
+            setIsLocked(lockState);
+          }
+        }
+
         console.log('Connected to encoder API:', status);
       } else {
         setEncoderConnected(false);
@@ -118,57 +132,7 @@ const ControlPanel: React.FC = () => {
     }
   };
   
-  // // Start encoder polling if connected
-  // useEffect(() => {
-  //   if (!encoderConnected) return;
-    
-  //   console.log('Starting encoder polling');
-    
-  //   const stopPolling = startEncoderPolling(
-  //     // Control values callback
-  //     (data) => {
-  //       // Don't update UI from hardware while user is actively controlling
-  //       if (localControlActive) {
-  //         console.log('Ignoring hardware update during local control');
-  //         return;
-  //       }
-        
-  //       // Update local state from hardware
-  //       if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
-  //         setRate(data.rate);
-  //       }
-        
-  //       if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
-  //         setAOutput(data.a_output);
-  //       }
-        
-  //       if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
-  //         setVOutput(data.v_output);
-  //       }
-        
-  //       // Update which control is active
-  //       if (data.active_control) {
-  //         // Implementation depends on how you want to visualize the active control
-  //         console.log('Active control from hardware:', data.active_control);
-  //       }
-  //     },
-  //     // Status callback
-  //     (status) => {
-  //       setHardwareStatus(status);
-  //     },
-  //     // Poll interval
-  //     100,
-  //     // Skip updates from these sources
-  //     ['frontend']
-  //   );
-    
-  //   return () => {
-  //     console.log('Stopping encoder polling');
-  //     stopPolling();
-  //   };
-  // }, [encoderConnected, rate, aOutput, vOutput, localControlActive]);
-
-    // Start encoder polling if connected
+  // Start encoder polling if connected
   useEffect(() => {
     if (!encoderConnected) return;
     
@@ -194,6 +158,18 @@ const ControlPanel: React.FC = () => {
         
         if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
           setVOutput(data.v_output);
+        }
+
+        // handles lock state changes
+        if (data.locked !== undefined && data.locked !== isLocked) {
+          setIsLocked(data.locked);
+          if (data.locked) {
+            // If device just locked, clear any auto-lock timer
+            if (autoLockTimer) {
+              clearTimeout(autoLockTimer);
+              setAutoLockTimer(null);
+            }
+          }
         }
       },
       // Status callback
@@ -221,6 +197,10 @@ const ControlPanel: React.FC = () => {
     
     const newTimer = setTimeout(() => {
       setIsLocked(true);
+      // Add these lines to update hardware lock state
+      if (encoderConnected) {
+        toggleLock().catch(err => console.error('Failed to toggle hardware lock state:', err));
+      }
     }, 60000); // 1 minute
     
     setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
@@ -460,7 +440,18 @@ const ControlPanel: React.FC = () => {
   // Toggle lock state
   const handleLockToggle = () => {
     resetAutoLockTimer();
+    
+    // Toggle local UI state
     setIsLocked(!isLocked);
+    
+    // Add this code to sync with hardware
+    if (encoderConnected) {
+      toggleLock().catch(err => {
+        console.error('Failed to toggle hardware lock state:', err);
+        // Revert UI state if hardware toggle fails
+        setIsLocked(isLocked);
+      });
+    }
   };
   
   // Render the appropriate mode panel
