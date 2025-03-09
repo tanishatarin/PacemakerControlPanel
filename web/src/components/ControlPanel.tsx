@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
-import CircularControl from './CircularControl';
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
@@ -8,6 +7,7 @@ import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
 import HardwareRateControl from './HardwareRateControl';
 import HardwareAOutputControl from './HardwareAOutputControl';
+import HardwareVOutputControl from './HardwareVOutputControl';
 import { 
   startEncoderPolling, 
   checkEncoderStatus, 
@@ -560,16 +560,11 @@ const ControlPanel: React.FC = () => {
           onLockError={handleLockError}
         />
         
-        <CircularControl
-          title="V. Output"
+        <HardwareVOutputControl
           value={vOutput}
-          unit="mA"
-          onChange={(value) => handleLocalValueChange('v_output', value)}
+          onChange={setVOutput}
           isLocked={isLocked}
-          minValue={0}
-          maxValue={25}
           onLockError={handleLockError}
-          isDimmed={vOutput === 0}
         />
       </div>
 

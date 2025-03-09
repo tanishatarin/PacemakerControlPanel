@@ -35,5 +35,9 @@ Clock 27, DT 22, Push 25
 
 #### A Output: 
 Clock 21, DT 20 
+* for a output turning, for some reason 0.3mA does not show up on the screen but the rest of the steps work perfectly! 
+
+#### V Output: 
+Clock 13, DT 6
 
 
