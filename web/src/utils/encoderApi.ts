@@ -346,18 +346,21 @@ export async function checkEncoderStatus(): Promise<ApiStatus | null> {
 }
 
 // Toggle lock state
-export async function toggleLock(): Promise<boolean | null> {
+export async function toggleLock(specificState: boolean | null = null): Promise<boolean | null> {
   try {
+    const requestBody = specificState !== null ? { state: specificState } : {};
+    
     const response = await fetch(`${API_BASE_URL}/api/lock/toggle`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(requestBody),
     });
     
     if (response.ok) {
       const data = await response.json();
-      console.log("Lock toggle response:", data); // Add logging for debugging
+      console.log("Lock toggle response:", data);
       return data.locked;
     }
     return null;
