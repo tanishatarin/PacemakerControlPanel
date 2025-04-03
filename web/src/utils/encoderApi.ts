@@ -1,9 +1,27 @@
+// Hardware Encoder API utilities
+
+export interface ButtonState {
+  up?: number;
+  down?: number;
+  left?: number;
+  doo?: number;
+}
+
 export interface EncoderControlData {
   rate?: number;
   a_output?: number;
   v_output?: number;
   locked?: boolean;
   active_control?: string;
+  buttons?: ButtonState;
+  is_doo_emergency?: boolean;
+}
+
+export interface HardwareButtons {
+  up_presses: number;
+  down_presses: number;
+  left_presses: number;
+  doo_presses: number;
 }
 
 export interface ApiStatus {
@@ -22,10 +40,20 @@ export interface ApiStatus {
     v_output_encoder?: {
       rotation_count: number;
     };
+    buttons?: HardwareButtons;
   };
+  is_doo_emergency?: boolean;
 }
 
 const API_BASE_URL = 'http://raspberrypi.local:5000'; // Update with your Raspberry Pi hostname or IP
+
+// Button press tracking
+let lastButtonState = {
+  up: 0,
+  down: 0,
+  left: 0,
+  doo: 0
+};
 
 // Check if the encoder API is available
 export async function checkEncoderStatus(): Promise<ApiStatus | null> {
@@ -35,8 +63,8 @@ export async function checkEncoderStatus(): Promise<ApiStatus | null> {
       headers: {
         'Content-Type': 'application/json',
       },
-      // Shorter timeout
-      signal: AbortSignal.timeout(1000),
+      // Short timeout to avoid hanging UI
+      signal: AbortSignal.timeout(2000),
     });
     
     if (response.ok) {
@@ -45,6 +73,68 @@ export async function checkEncoderStatus(): Promise<ApiStatus | null> {
     return null;
   } catch (error) {
     console.error('Error checking encoder status:', error);
+    return null;
+  }
+}
+
+// Get button states
+export async function getButtonStates(): Promise<any> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/buttons`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting button states:', error);
+    return null;
+  }
+}
+
+// Toggle DOO emergency mode
+export async function toggleDOOEmergency(): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/doo_emergency/toggle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.is_doo_emergency;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error toggling DOO emergency mode:', error);
+    return null;
+  }
+}
+
+// Get DOO emergency state
+export async function getDOOEmergencyState(): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/doo_emergency`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.is_doo_emergency;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting DOO emergency state:', error);
     return null;
   }
 }
@@ -61,7 +151,6 @@ export async function toggleLock(): Promise<boolean | null> {
     
     if (response.ok) {
       const data = await response.json();
-      console.log("Lock toggle response:", data); // Add logging for debugging
       return data.locked;
     }
     return null;
@@ -203,40 +292,67 @@ async function updateVOutput(value: number): Promise<boolean> {
   }
 }
 
+// Function to detect and handle button presses
+function checkButtonPresses(data: { buttons?: ButtonState }, callback: (button: string) => void) {
+  if (!data.buttons) return;
+  
+  // Check each button for changes
+  if (data.buttons.up !== undefined && data.buttons.up > lastButtonState.up) {
+    callback('up');
+    lastButtonState.up = data.buttons.up;
+  }
+  
+  if (data.buttons.down !== undefined && data.buttons.down > lastButtonState.down) {
+    callback('down');
+    lastButtonState.down = data.buttons.down;
+  }
+  
+  if (data.buttons.left !== undefined && data.buttons.left > lastButtonState.left) {
+    callback('left');
+    lastButtonState.left = data.buttons.left;
+  }
+  
+  if (data.buttons.doo !== undefined && data.buttons.doo > lastButtonState.doo) {
+    callback('doo');
+    lastButtonState.doo = data.buttons.doo;
+  }
+  
+  // Update our tracking
+  if (data.buttons.up !== undefined) lastButtonState.up = data.buttons.up;
+  if (data.buttons.down !== undefined) lastButtonState.down = data.buttons.down;
+  if (data.buttons.left !== undefined) lastButtonState.left = data.buttons.left;
+  if (data.buttons.doo !== undefined) lastButtonState.doo = data.buttons.doo;
+}
+
 // Start polling the encoder hardware at regular intervals
 export function startEncoderPolling(
   onControlUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
   interval = 200,
-  ignoreSourceList: string[] = []
+  ignoreSourceList: string[] = [],
+  onButtonPress?: (button: string) => void // New callback for button presses
 ): () => void {
   let lastSourceRef = { source: 'init', time: Date.now() };
-  let lastLockState: boolean | null = null;
   
-  // Add a specific interval for checking lock state (more frequent)
-  const lockCheckInterval = 100; // Check lock state every 100ms
-  
-  // Create a dedicated lock state poller
-  const lockPoller = setInterval(async () => {
-    try {
-      const lockState = await getLockState();
-      if (lockState !== null && lockState !== lastLockState) {
-        // If lock state changed, update it immediately
-        lastLockState = lockState;
-        onControlUpdate({ locked: lockState });
-      }
-    } catch (error) {
-      console.error('Error checking lock state:', error);
-    }
-  }, lockCheckInterval);
-  
-  // Main poller for other controls
-  const mainPoller = setInterval(async () => {
+  const poller = setInterval(async () => {
     try {
       const status = await checkEncoderStatus();
       
       if (!status) {
         return;
+      }
+      
+      // Check for button presses if callback provided
+      if (onButtonPress && status.hardware?.buttons) {
+        const buttonData = {
+          buttons: {
+            up: status.hardware.buttons.up_presses,
+            down: status.hardware.buttons.down_presses,
+            left: status.hardware.buttons.left_presses,
+            doo: status.hardware.buttons.doo_presses
+          }
+        };
+        checkButtonPresses(buttonData, onButtonPress);
       }
       
       // Update with status information
@@ -257,22 +373,22 @@ export function startEncoderPolling(
         controlData.v_output = status.v_output;
       }
       
-      // We handle lock state separately now, but include it for completeness
-      if (status.locked !== undefined && status.locked !== lastLockState) {
-        lastLockState = status.locked;
+      if (status.locked !== undefined) {
         controlData.locked = status.locked;
+      }
+      
+      if (status.is_doo_emergency !== undefined) {
+        controlData.is_doo_emergency = status.is_doo_emergency;
       }
       
       // Check if we should ignore this update based on source
       const now = Date.now();
       const timeSinceLastUpdate = now - lastSourceRef.time;
       
-      const ignoreUpdate = 
+      if (
         timeSinceLastUpdate < 500 && 
-        ignoreSourceList.includes(lastSourceRef.source);
-        
-      // Don't ignore lock state updates regardless of source
-      if (ignoreUpdate && !controlData.hasOwnProperty('locked')) {
+        ignoreSourceList.includes(lastSourceRef.source)
+      ) {
         return;
       }
       
@@ -286,8 +402,5 @@ export function startEncoderPolling(
   }, interval);
   
   // Return a function to stop polling
-  return () => {
-    clearInterval(mainPoller);
-    clearInterval(lockPoller);
-  };
+  return () => clearInterval(poller);
 }

@@ -13,10 +13,13 @@ import {
   checkEncoderStatus, 
   updateControls, 
   toggleLock, 
-  getLockState, 
+  getLockState,
+  toggleDOOEmergency,
+  getDOOEmergencyState,
   ApiStatus,
   EncoderControlData
 } from '../utils/encoderApi';
+
 
 
 const ControlPanel: React.FC = () => {
@@ -51,6 +54,8 @@ const ControlPanel: React.FC = () => {
   const [localControlActive, setLocalControlActive] = useState(false);
   
   const [selectedDDDSetting, setSelectedDDDSetting] = useState<'aSensitivity' | 'vSensitivity'>('aSensitivity');
+  const [isDOOEmergency, setIsDOOEmergency] = useState(false);
+
 
   // DDD Mode specific states
   const [dddSettings, setDddSettings] = useState({
@@ -86,6 +91,17 @@ const ControlPanel: React.FC = () => {
           const lockState = await getLockState();
           if (lockState !== null) {
             setIsLocked(lockState);
+          }
+        }
+
+        // checks if doo clicked 
+        if (status.is_doo_emergency !== undefined) {
+          setIsDOOEmergency(status.is_doo_emergency);
+        } else {
+          // If not in status, try to get it directly
+          const dooState = await getDOOEmergencyState();
+          if (dooState !== null) {
+            setIsDOOEmergency(dooState);
           }
         }
 
@@ -140,6 +156,50 @@ const ControlPanel: React.FC = () => {
     
     console.log('Starting encoder polling');
     
+    // const stopPolling = startEncoderPolling(
+    //   // Control values callback
+    //   (data: EncoderControlData) => {
+    //     // Don't update UI from hardware while user is actively controlling
+    //     if (localControlActive) {
+    //       console.log('Ignoring hardware update during local control');
+    //       return;
+    //     }
+        
+    //     // Update local state from hardware
+    //     if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
+    //       setRate(data.rate);
+    //     }
+        
+    //     if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
+    //       setAOutput(data.a_output);
+    //     }
+        
+    //     if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
+    //       setVOutput(data.v_output);
+    //     }
+
+    //     // handles lock state changes
+    //     if (data.locked !== undefined && data.locked !== isLocked) {
+    //       setIsLocked(data.locked);
+    //       if (data.locked) {
+    //         // If device just locked, clear any auto-lock timer
+    //         if (autoLockTimer) {
+    //           clearTimeout(autoLockTimer);
+    //           setAutoLockTimer(null);
+    //         }
+    //       }
+    //     }
+    //   },
+    //   // Status callback
+    //   (status) => {
+    //     setHardwareStatus(status);
+    //   },
+    //   // Poll interval
+    //   100,
+    //   // Skip updates from these sources
+    //   ['frontend']
+    // );
+      
     const stopPolling = startEncoderPolling(
       // Control values callback
       (data: EncoderControlData) => {
@@ -161,7 +221,7 @@ const ControlPanel: React.FC = () => {
         if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
           setVOutput(data.v_output);
         }
-
+    
         // handles lock state changes
         if (data.locked !== undefined && data.locked !== isLocked) {
           setIsLocked(data.locked);
@@ -173,6 +233,22 @@ const ControlPanel: React.FC = () => {
             }
           }
         }
+        
+        // Handle DOO emergency mode changes
+        if (data.is_doo_emergency !== undefined && data.is_doo_emergency !== isDOOEmergency) {
+          setIsDOOEmergency(data.is_doo_emergency);
+          if (data.is_doo_emergency) {
+            // Set DOO mode in UI
+            const dooIndex = modes.indexOf('DOO');
+            setSelectedModeIndex(dooIndex);
+            setPendingModeIndex(dooIndex);
+            
+            // Show DOO settings
+            setShowDOOSettings(true);
+            setShowDDDSettings(false);
+            setShowVVISettings(false);
+          }
+        }
       },
       // Status callback
       (status) => {
@@ -181,9 +257,29 @@ const ControlPanel: React.FC = () => {
       // Poll interval
       100,
       // Skip updates from these sources
-      ['frontend']
+      ['frontend'],
+      // Button press callback
+      (button) => {
+        console.log(`Physical button pressed: ${button}`);
+        
+        // Handle physical button presses
+        switch (button) {
+          case 'up':
+            handleModeNavigation('up');
+            break;
+          case 'down':
+            handleModeNavigation('down');
+            break;
+          case 'left':
+            handleLeftArrowPress();
+            break;
+          case 'doo':
+            handleEmergencyMode();
+            break;
+        }
+      }
     );
-      
+
     return () => {
       console.log('Stopping encoder polling');
       stopPolling();
@@ -417,7 +513,40 @@ const ControlPanel: React.FC = () => {
   };
 
   // Activate emergency mode
-  const handleEmergencyMode = () => {
+  // const handleEmergencyMode = () => {
+  //   resetAutoLockTimer();
+    
+  //   if (isLocked) {
+  //     handleLockError();
+  //     return;
+  //   }
+    
+  //   // Set emergency parameters
+  //   setRate(80);
+  //   setAOutput(20.0);
+  //   setVOutput(25.0);
+    
+  //   // Set to DOO mode
+  //   const dooIndex = modes.indexOf('DOO');
+  //   setSelectedModeIndex(dooIndex);
+  //   setPendingModeIndex(dooIndex);
+    
+  //   // Show DOO settings
+  //   setShowDOOSettings(true);
+  //   setShowDDDSettings(false);
+  //   setShowVVISettings(false);
+    
+  //   // If connected to hardware, send emergency mode settings
+  //   if (encoderConnected) {
+  //     updateControls({
+  //       rate: 80,
+  //       a_output: 20.0,
+  //       v_output: 25.0
+  //     });
+  //   }
+  // };
+
+  const handleEmergencyMode = async () => {
     resetAutoLockTimer();
     
     if (isLocked) {
@@ -425,28 +554,50 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Set emergency parameters
-    setRate(80);
-    setAOutput(20.0);
-    setVOutput(25.0);
+    // Toggle DOO emergency mode
+    const newDOOState = !isDOOEmergency;
+    setIsDOOEmergency(newDOOState);
     
-    // Set to DOO mode
-    const dooIndex = modes.indexOf('DOO');
-    setSelectedModeIndex(dooIndex);
-    setPendingModeIndex(dooIndex);
+    if (newDOOState) {
+      // Set emergency parameters
+      setRate(80);
+      setAOutput(20.0);
+      setVOutput(25.0);
+      
+      // Set to DOO mode
+      const dooIndex = modes.indexOf('DOO');
+      setSelectedModeIndex(dooIndex);
+      setPendingModeIndex(dooIndex);
+      
+      // Show DOO settings
+      setShowDOOSettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+    }
     
-    // Show DOO settings
-    setShowDOOSettings(true);
-    setShowDDDSettings(false);
-    setShowVVISettings(false);
-    
-    // If connected to hardware, send emergency mode settings
+    // If connected to hardware, sync the DOO state
     if (encoderConnected) {
-      updateControls({
-        rate: 80,
-        a_output: 20.0,
-        v_output: 25.0
-      });
+      try {
+        // Toggle DOO mode on hardware
+        const hardwareDOOState = await toggleDOOEmergency();
+        
+        // If hardware returned a different state, update UI
+        if (hardwareDOOState !== null && hardwareDOOState !== newDOOState) {
+          console.log("Hardware DOO state doesn't match UI state, updating UI");
+          setIsDOOEmergency(hardwareDOOState);
+        }
+        
+        // Update other parameters on hardware
+        if (newDOOState) {
+          await updateControls({
+            rate: 80,
+            a_output: 20.0,
+            v_output: 25.0
+          });
+        }
+      } catch (err) {
+        console.error('Failed to toggle hardware DOO state:', err);
+      }
     }
   };
 
@@ -605,7 +756,7 @@ const ControlPanel: React.FC = () => {
       </div>
     )}
 
-      {/* Emergency Mode Button */}
+      {/* Emergency Mode Button
       <button
         onClick={handleEmergencyMode}
         className={`w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors
@@ -613,6 +764,21 @@ const ControlPanel: React.FC = () => {
         `}
       >
         DOO Emergency Mode
+      </button> */}
+
+      {/* Emergency Mode Button */}
+      
+      <button
+        onClick={handleEmergencyMode}
+        className={`w-full mb-4 ${
+          isDOOEmergency 
+            ? 'bg-red-700 hover:bg-red-800' 
+            : 'bg-red-500 hover:bg-red-600'
+        } text-white py-2 px-4 rounded-xl transition-colors
+          ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
+        `}
+      >
+        {isDOOEmergency ? 'Exit DOO Emergency Mode' : 'DOO Emergency Mode'}
       </button>
 
       {/* Main Controls */}
