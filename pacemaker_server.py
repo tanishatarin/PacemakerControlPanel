@@ -1,15 +1,10 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 from gpiozero import RotaryEncoder, Button, LED
 import time
-import threading
-
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*")
-
+CORS(app)  # Enable CORS for all routes
 
 # Set up the Rate rotary encoder (pins defined as in your example)
 rate_encoder = RotaryEncoder(27, 22, max_steps=200, wrap=False)
