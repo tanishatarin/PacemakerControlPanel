@@ -21,6 +21,22 @@ lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster res
 # Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
 lock_led = LED(18)  # GPIO pin for the LED
 
+# New buttons for navigation and emergency mode
+up_button = Button(26, bounce_time=0.05)
+down_button = Button(14, bounce_time=0.05)
+left_button = Button(8, bounce_time=0.05)
+doo_button = Button(23, bounce_time=0.05)
+doo_led = LED(24)
+
+# Button press counters
+up_button_presses = 0
+down_button_presses = 0
+left_button_presses = 0
+doo_button_presses = 0
+
+# DOO emergency mode state
+is_doo_emergency = False
+
 # Initial values
 rate_encoder.steps = 80
 current_rate = 80
@@ -33,6 +49,10 @@ current_v_output = 10.0
 
 # Lock state
 is_locked = False
+
+# Mode tracking
+modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI']
+current_mode_index = 0
 
 # Min/max values
 min_rate = 30
@@ -145,15 +165,101 @@ def toggle_lock():
         lock_led.off()  # Turn off LED when unlocked
         print("Device UNLOCKED")
 
+# Function to handle up button press
+def handle_up_button():
+    global up_button_presses
+    if is_locked:
+        print("Cannot navigate: device is locked")
+        return
+    
+    up_button_presses += 1
+    print(f"Up button pressed (count: {up_button_presses})")
+
+# Function to handle down button press
+def handle_down_button():
+    global down_button_presses
+    if is_locked:
+        print("Cannot navigate: device is locked")
+        return
+    
+    down_button_presses += 1
+    print(f"Down button pressed (count: {down_button_presses})")
+
+# Function to handle left button press
+def handle_left_button():
+    global left_button_presses
+    if is_locked:
+        print("Cannot navigate: device is locked")
+        return
+    
+    left_button_presses += 1
+    print(f"Left button pressed (count: {left_button_presses})")
+
+# Function to toggle DOO emergency mode
+def toggle_doo_emergency():
+    global is_doo_emergency, current_mode_index, current_rate, current_a_output, current_v_output, doo_button_presses
+    if is_locked:
+        print("Cannot toggle emergency mode: device is locked")
+        return
+    
+    doo_button_presses += 1
+    is_doo_emergency = not is_doo_emergency
+    
+    # Update LED and settings
+    if is_doo_emergency:
+        doo_led.on()
+        # Set DOO mode
+        doo_index = modes.index('DOO')
+        current_mode_index = doo_index
+        # Set emergency parameters
+        current_rate = 80
+        rate_encoder.steps = 80
+        current_a_output = 20.0
+        current_v_output = 25.0
+        print("DOO EMERGENCY MODE ACTIVATED")
+    else:
+        doo_led.off()
+        print("DOO Emergency mode deactivated")
+
 # Change the event binding - only toggle on release
 # This ensures a complete click cycle is required
-lock_button.when_released = toggle_lock  # Change from when_pressed to when_released
+lock_button.when_released = toggle_lock
+up_button.when_released = handle_up_button
+down_button.when_released = handle_down_button
+left_button.when_released = handle_left_button
+doo_button.when_released = toggle_doo_emergency
 
 # Attach event listeners
 rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
 lock_button.when_pressed = toggle_lock
+
+# API endpoints for new button states
+@app.route('/api/buttons', methods=['GET'])
+def get_button_states():
+    return jsonify({
+        'up_button_presses': up_button_presses,
+        'down_button_presses': down_button_presses,
+        'left_button_presses': left_button_presses,
+        'doo_button_presses': doo_button_presses,
+        'is_doo_emergency': is_doo_emergency
+    })
+
+# API endpoint to get/set DOO emergency mode
+@app.route('/api/doo_emergency', methods=['GET'])
+def get_doo_emergency():
+    return jsonify({
+        'is_doo_emergency': is_doo_emergency
+    })
+
+@app.route('/api/doo_emergency/toggle', methods=['POST'])
+def set_doo_emergency():
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
+    
+    toggle_doo_emergency()
+    return jsonify({'success': True, 'is_doo_emergency': is_doo_emergency})
 
 # API endpoints for Lock status
 @app.route('/api/lock', methods=['GET'])
@@ -162,19 +268,6 @@ def get_lock():
         'locked': is_locked
     })
 
-# @app.route('/api/lock/toggle', methods=['POST'])
-# def set_lock():
-#     global is_locked
-#     is_locked = not is_locked
-    
-#     # Update LED based on lock state
-#     if is_locked:
-#         lock_led.on()
-#     else:
-#         lock_led.off()
-        
-#     print(f"Lock state toggled via API: {'Locked' if is_locked else 'Unlocked'}")
-#     return jsonify({'success': True, 'locked': is_locked})
 @app.route('/api/lock/toggle', methods=['POST'])
 def set_lock():
     toggle_lock()  # Use the same function to ensure consistent behavior
@@ -323,7 +416,8 @@ def health_check():
         'rate': current_rate,
         'a_output': current_a_output,
         'v_output': current_v_output,
-        'locked': is_locked
+        'locked': is_locked,
+        'is_doo_emergency': is_doo_emergency
     })
 
 # API endpoint to get hardware information
@@ -340,8 +434,15 @@ def get_hardware_info():
             },
             'v_output_encoder': {
                 'rotation_count': v_output_encoder.steps
+            },
+            'buttons': {
+                'up_presses': up_button_presses,
+                'down_presses': down_button_presses,
+                'left_presses': left_button_presses,
+                'doo_presses': doo_button_presses
             }
-        }
+        },
+        'is_doo_emergency': is_doo_emergency
     })
 
 if __name__ == '__main__':
@@ -351,10 +452,21 @@ if __name__ == '__main__':
     else:
         lock_led.off()
         
+    # Set initial DOO LED state
+    if is_doo_emergency:
+        doo_led.on()
+    else:
+        doo_led.off()
+        
     print("Pacemaker Server Started")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Lock LED on pin GPIO 18")
+    print(f"Up button on pin GPIO 26")
+    print(f"Down button on pin GPIO 14")
+    print(f"Left button on pin GPIO 8")
+    print(f"DOO button on pin GPIO 23, LED on pin GPIO 24")
+    
     app.run(host='0.0.0.0', port=5000, debug=False)
