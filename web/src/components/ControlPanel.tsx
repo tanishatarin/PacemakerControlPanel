@@ -50,6 +50,8 @@ const ControlPanel: React.FC = () => {
   const [hardwareStatus, setHardwareStatus] = useState<ApiStatus | null>(null);
   const [localControlActive, setLocalControlActive] = useState(false);
   
+  const [selectedDDDSetting, setSelectedDDDSetting] = useState<'aSensitivity' | 'vSensitivity'>('aSensitivity');
+
   // DDD Mode specific states
   const [dddSettings, setDddSettings] = useState({
     aSensitivity: 0.5,
@@ -320,6 +322,21 @@ const ControlPanel: React.FC = () => {
   };
 
   // Handle mode navigation
+  // const handleModeNavigation = (direction: 'up' | 'down') => {
+  //   resetAutoLockTimer();
+    
+  //   if (isLocked) {
+  //     handleLockError();
+  //     return;
+  //   }
+    
+  //   if (direction === 'up') {
+  //     setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
+  //   } else {
+  //     setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
+  //   }
+  // };
+
   const handleModeNavigation = (direction: 'up' | 'down') => {
     resetAutoLockTimer();
     
@@ -328,12 +345,24 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
+    // If we're in DDD settings, handle navigation within those settings
+    if (showDDDSettings) {
+      if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
+        setSelectedDDDSetting('aSensitivity');
+      } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
+        setSelectedDDDSetting('vSensitivity');
+      }
+      return;
+    }
+    
+    // Otherwise handle regular mode navigation
     if (direction === 'up') {
       setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
     } else {
       setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
     }
   };
+  
 
   // Apply selected mode or return from settings screen
   const handleLeftArrowPress = () => {
@@ -513,6 +542,8 @@ const ControlPanel: React.FC = () => {
           onSettingsChange={handleDDDSettingsChange}
           onBack={handleLeftArrowPress}
           isLocked={isLocked}
+          selectedSetting={selectedDDDSetting}
+          onNavigate={handleModeNavigation}
         />
       );
     } else if (showVVISettings) {

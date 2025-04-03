@@ -30,7 +30,7 @@ Open the browser and navigate to <http://localhost:5173/>.
 ### GPIO Pins for Encoders 
 
 #### Rate:
-Clock 27, DT 22, Push 25 
+Clock 27, DT 22
 
 
 #### A Output: 
@@ -42,4 +42,12 @@ Clock 13, DT 6
 
 #### Buttons ?!?!
 
+Lock 17, LED 18 
+Up 26, LED 19 
+Down 14, LED 15
+Left / select 8, LED 7 
+DOO 23, LED 24 
+Power 5, LED 16 
 
+
+pasue ? if neeeeded later 
