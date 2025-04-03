@@ -344,29 +344,6 @@ def get_hardware_info():
         }
     })
 
-
-
-# function to broadcast current state
-def broadcast_state():
-    while True:
-        state = {
-            'rate': current_rate,
-            'a_output': current_a_output,
-            'v_output': current_v_output,
-            'locked': is_locked,
-            'mode': modes[current_mode_index],  # You'll need to track current mode
-            'battery': battery_level # You'll need to track battery level
-        }
-        socketio.emit('pacemaker_update', state)
-        time.sleep(0.2)  # Update 5 times per second -- is that enough for how fast things are updating on the pacemaker?
-
-# Start the broadcasting thread
-broadcast_thread = threading.Thread(target=broadcast_state)
-broadcast_thread.daemon = True  # So it exits when the main program exits
-
-
-
-
 if __name__ == '__main__':
     # Set initial LED state based on lock state
     if is_locked:
@@ -381,6 +358,3 @@ if __name__ == '__main__':
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Lock LED on pin GPIO 18")
     app.run(host='0.0.0.0', port=5000, debug=False)
-    # new for websokcet -- sending data to client (modules)
-    broadcast_thread.start()
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
