@@ -22,9 +22,14 @@ export interface ApiStatus {
     v_output_encoder?: {
       rotation_count: number;
     };
+    buttons?: {
+      up_pressed: boolean;
+      down_pressed: boolean;
+    };
   };
-  buttons?: { 
+  buttons?: {
     up_pressed: boolean;
+    down_pressed: boolean;
   };
 }
 
@@ -245,13 +250,19 @@ export function startEncoderPolling(
       // Update with status information
       onStatusUpdate(status);
       
-      // Detect and dispatch up button press
+      // Detect and dispatch button presses
       if (status.buttons?.up_pressed) {
         console.log("Up button press detected via health check");
         const event = new CustomEvent('hardware-up-button-pressed');
         window.dispatchEvent(event);
       }
       
+      if (status.buttons?.down_pressed) {
+        console.log("Down button press detected via health check");
+        const event = new CustomEvent('hardware-down-button-pressed');
+        window.dispatchEvent(event);
+      }
+          
       // Prepare control update data
       const controlData: EncoderControlData = {};
       

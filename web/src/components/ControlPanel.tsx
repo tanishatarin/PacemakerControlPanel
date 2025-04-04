@@ -435,6 +435,22 @@ const ControlPanel: React.FC = () => {
     };
   }, [handleModeNavigation]); // Only depends on handleModeNavigation now
 
+  // Set up listener for hardware down button press
+useEffect(() => {
+  const handleHardwareDownButtonPress = () => {
+    console.log("Hardware down button press detected");
+    handleModeNavigation('down');
+  };
+
+  // Add event listener for the custom event
+  window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+
+  // Clean up
+  return () => {
+    window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+  };
+}, [handleModeNavigation]); // Use the memoized version of handleModeNavigation
+
   // Apply selected mode or return from settings screen
   const handleLeftArrowPress = () => {
     resetAutoLockTimer();
