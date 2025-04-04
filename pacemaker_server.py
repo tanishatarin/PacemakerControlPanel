@@ -19,7 +19,7 @@ v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
 
 # Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
-lock_led = LED(18)  # GPIO pin for the LED
+# lock_led = LED(18)  # GPIO pin for the LED
 
 # Initial values
 rate_encoder.steps = 80
@@ -139,10 +139,10 @@ def toggle_lock():
     
     # Update LED based on lock state
     if is_locked:
-        lock_led.on()  # Turn on LED when locked
+        # lock_led.on()  # Turn on LED when locked
         print("Device LOCKED")
     else:
-        lock_led.off()  # Turn off LED when unlocked
+        # lock_led.off()  # Turn off LED when unlocked
         print("Device UNLOCKED")
 
 # Change the event binding - only toggle on release
@@ -346,10 +346,10 @@ def get_hardware_info():
 
 if __name__ == '__main__':
     # Set initial LED state based on lock state
-    if is_locked:
-        lock_led.on()
-    else:
-        lock_led.off()
+    # if is_locked:
+    #     # lock_led.on()
+    # else:
+    #     # lock_led.off()
         
     print("Pacemaker Server Started")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
