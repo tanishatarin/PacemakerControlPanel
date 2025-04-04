@@ -22,6 +22,9 @@ export interface ApiStatus {
     v_output_encoder?: {
       rotation_count: number;
     };
+    buttons?: {
+      up_pressed: boolean;
+    };
   };
 }
 

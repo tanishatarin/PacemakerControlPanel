@@ -18,6 +18,9 @@ v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 # Set up the Lock Button (from the screenshot, using GPIO 17)
 lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
 
+# Set up the Up Button (using GPIO 26)
+up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
+
 # Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
 # lock_led = LED(18)  # GPIO pin for the LED
 

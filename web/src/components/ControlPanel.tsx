@@ -191,6 +191,62 @@ const ControlPanel: React.FC = () => {
   }, [encoderConnected, rate, aOutput, vOutput, localControlActive]);
 
 
+  // useEffect(() => {
+  //   if (!encoderConnected) return;
+    
+  //   console.log('Starting encoder polling');
+    
+  //   const stopPolling = startEncoderPolling(
+  //     // Control values callback
+  //     (data: EncoderControlData) => {
+  //       // Don't update UI from hardware while user is actively controlling
+  //       if (localControlActive) {
+  //         console.log('Ignoring hardware update during local control');
+  //         return;
+  //       }
+        
+  //       // Update local state from hardware
+  //       if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
+  //         setRate(data.rate);
+  //       }
+        
+  //       if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
+  //         setAOutput(data.a_output);
+  //       }
+        
+  //       if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
+  //         setVOutput(data.v_output);
+  //       }
+
+  //       // handles lock state changes
+  //       if (data.locked !== undefined && data.locked !== isLocked) {
+  //         setIsLocked(data.locked);
+  //         if (data.locked) {
+  //           // If device just locked, clear any auto-lock timer
+  //           if (autoLockTimer) {
+  //             clearTimeout(autoLockTimer);
+  //             setAutoLockTimer(null);
+  //           }
+  //         }
+  //       }
+  //     },
+  //     // Status callback
+  //     (status) => {
+  //       setHardwareStatus(status);
+  //     },
+  //     // Poll interval
+  //     100,
+  //     // Skip updates from these sources
+  //     ['frontend']
+  //   );
+      
+  //   return () => {
+  //     console.log('Stopping encoder polling');
+  //     stopPolling();
+  //   };
+  // }, [encoderConnected, rate, aOutput, vOutput, localControlActive]);
+
+
   // Auto-lock timer management
   const resetAutoLockTimer = () => {
     if (autoLockTimer) {
@@ -363,6 +419,21 @@ const ControlPanel: React.FC = () => {
     }
   };
   
+  // Set up listener for hardware up button press
+  useEffect(() => {
+    const handleHardwareUpButtonPress = () => {
+      console.log("Hardware up button press detected");
+      handleModeNavigation('up');
+    };
+
+    // Add event listener for the custom event
+    window.addEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
+    };
+  }, [handleModeNavigation]); // Only depends on handleModeNavigation now
 
   // Apply selected mode or return from settings screen
   const handleLeftArrowPress = () => {

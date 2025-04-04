@@ -51,3 +51,11 @@ Lock 17, LED 18
  DOO 23, LED 24 
  Power 5, LED 16 
  pause ??
+
+
+to ensure things work properly: 
+ black = ground 
+ red = 5 volts 
+ blue = logic pin 
+ yellow = ground 
+
