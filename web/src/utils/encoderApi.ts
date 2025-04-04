@@ -25,11 +25,13 @@ export interface ApiStatus {
     buttons?: {
       up_pressed: boolean;
       down_pressed: boolean;
+      left_pressed: boolean;
     };
   };
   buttons?: {
     up_pressed: boolean;
     down_pressed: boolean;
+    left_pressed: boolean;
   };
 }
 
@@ -262,7 +264,13 @@ export function startEncoderPolling(
         const event = new CustomEvent('hardware-down-button-pressed');
         window.dispatchEvent(event);
       }
-          
+      
+      if (status.buttons?.left_pressed) {
+        console.log("Left button press detected via health check");
+        const event = new CustomEvent('hardware-left-button-pressed');
+        window.dispatchEvent(event);
+      }
+      
       // Prepare control update data
       const controlData: EncoderControlData = {};
       

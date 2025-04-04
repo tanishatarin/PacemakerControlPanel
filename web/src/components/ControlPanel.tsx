@@ -436,11 +436,28 @@ const ControlPanel: React.FC = () => {
   }, [handleModeNavigation]); // Only depends on handleModeNavigation now
 
   // Set up listener for hardware down button press
+  useEffect(() => {
+    const handleHardwareDownButtonPress = () => {
+      console.log("Hardware down button press detected");
+      handleModeNavigation('down');
+    };
+
+  // Set up listener for hardware left button press
 useEffect(() => {
-  const handleHardwareDownButtonPress = () => {
-    console.log("Hardware down button press detected");
-    handleModeNavigation('down');
+  const handleHardwareLeftButtonPress = () => {
+    console.log("Hardware left button press detected");
+    handleLeftArrowPress();
   };
+
+  // Add event listener for the custom event
+  window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+
+  // Clean up
+  return () => {
+    window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+  };
+}, [handleLeftArrowPress]); // Use the memoized version of handleLeftArrowPress if available
+
 
   // Add event listener for the custom event
   window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
@@ -451,51 +468,51 @@ useEffect(() => {
   };
 }, [handleModeNavigation]); // Use the memoized version of handleModeNavigation
 
-  // Apply selected mode or return from settings screen
-  const handleLeftArrowPress = () => {
-    resetAutoLockTimer();
-    
-    if (isLocked) {
-      handleLockError();
-      return;
-    }
-    
-    // If we're in a settings screen, go back to the mode selection
-    if (showDDDSettings || showVVISettings || showDOOSettings) {
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
-      return;
-    }
-    
-    // Otherwise, apply the selected mode and show appropriate settings
-    setSelectedModeIndex(pendingModeIndex);
-    const newMode = modes[pendingModeIndex];
-    
-    // Check if mode requires special settings screen
-    if (newMode === 'DDD') {
-      setShowDDDSettings(true);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
-    } else if (newMode === 'VVI') {
-      setShowVVISettings(true);
-      setShowDDDSettings(false);
-      setShowDOOSettings(false);
-    } else if (newMode === 'DOO') {
-      setShowDOOSettings(true);
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-    } else {
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
-    }
-    
-    // If exiting async message mode
-    if (showAsyncMessage) {
-      setShowAsyncMessage(false);
-    }
-  };
+// Memoize the handleLeftArrowPress function
+const handleLeftArrowPress = useCallback(() => {
+  resetAutoLockTimer();
+  
+  if (isLocked) {
+    handleLockError();
+    return;
+  }
+  
+  // If we're in a settings screen, go back to the mode selection
+  if (showDDDSettings || showVVISettings || showDOOSettings) {
+    setShowDDDSettings(false);
+    setShowVVISettings(false);
+    setShowDOOSettings(false);
+    return;
+  }
+  
+  // Otherwise, apply the selected mode and show appropriate settings
+  setSelectedModeIndex(pendingModeIndex);
+  const newMode = modes[pendingModeIndex];
+  
+  // Check if mode requires special settings screen
+  if (newMode === 'DDD') {
+    setShowDDDSettings(true);
+    setShowVVISettings(false);
+    setShowDOOSettings(false);
+  } else if (newMode === 'VVI') {
+    setShowVVISettings(true);
+    setShowDDDSettings(false);
+    setShowDOOSettings(false);
+  } else if (newMode === 'DOO') {
+    setShowDOOSettings(true);
+    setShowDDDSettings(false);
+    setShowVVISettings(false);
+  } else {
+    setShowDDDSettings(false);
+    setShowVVISettings(false);
+    setShowDOOSettings(false);
+  }
+  
+  // If exiting async message mode
+  if (showAsyncMessage) {
+    setShowAsyncMessage(false);
+  }
+}, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, resetAutoLockTimer]);
 
   // Show error when trying to adjust while locked
   const handleLockError = () => {

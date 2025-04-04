@@ -21,6 +21,8 @@ lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster res
 # Set up the Up & down Button  (using GPIO 26, 14)
 up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
 down_button = Button(14, bounce_time=0.05)  # Add down button on pin 14
+left_button = Button(8, bounce_time=0.05)  # Add left button on pin 8
+
 
 # Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
 # lock_led = LED(18)  # GPIO pin for the LED
@@ -60,6 +62,10 @@ last_up_press_time = 0
 down_button_pressed = False
 last_down_press_time = 0
 
+# left button state
+left_button_pressed = False
+last_left_press_time = 0
+
 def handle_down_button():
     global last_down_press_time, down_button_pressed
     current_time = time.time()
@@ -80,6 +86,17 @@ def handle_up_button():
         last_up_press_time = current_time
         up_button_pressed = True
         print("Up button pressed")
+        
+        
+def handle_left_button():
+    global last_left_press_time, left_button_pressed
+    current_time = time.time()
+    
+    # Debounce logic - only register a press if it's been at least 300ms since the last one
+    if current_time - last_left_press_time > 0.3:
+        last_left_press_time = current_time
+        left_button_pressed = True
+        print("Left button pressed")
 
 # Function to update the current rate value
 def update_rate():
@@ -190,6 +207,7 @@ lock_button.when_pressed = toggle_lock
 
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
+left_button.when_released = handle_left_button
 
 
 
@@ -356,7 +374,7 @@ def reset_v_output():
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    global up_button_pressed, down_button_pressed
+    global up_button_pressed, down_button_pressed, left_button_pressed
     status_data = {
         'status': 'ok',
         'rate': current_rate,
@@ -365,20 +383,25 @@ def health_check():
         'locked': is_locked,
         'buttons': {
             'up_pressed': up_button_pressed,
-            'down_pressed': down_button_pressed
+            'down_pressed': down_button_pressed,
+            'left_pressed': left_button_pressed
         }
     }
     
     # Reset the flags after reporting
     was_up_pressed = up_button_pressed
     was_down_pressed = down_button_pressed
+    was_left_pressed = left_button_pressed
     up_button_pressed = False
     down_button_pressed = False
+    left_button_pressed = False
     
     if was_up_pressed:
         print("Reporting up button press via health check")
     if was_down_pressed:
         print("Reporting down button press via health check")
+    if was_left_pressed:
+        print("Reporting left button press via health check")
         
     return jsonify(status_data)
 
@@ -386,7 +409,7 @@ def health_check():
 # API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
 def get_hardware_info():
-    global up_button_pressed, down_button_pressed
+    global up_button_pressed, down_button_pressed, left_button_pressed
     return jsonify({
         'status': 'ok',
         'hardware': {
@@ -401,7 +424,8 @@ def get_hardware_info():
             },
             'buttons': {
                 'up_pressed': up_button_pressed,
-                'down_pressed': down_button_pressed
+                'down_pressed': down_button_pressed,
+                'left_pressed': left_button_pressed
             }
         }
     })
@@ -421,4 +445,5 @@ if __name__ == '__main__':
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")
+    print(f"Left button on pin GPIO 8")
     app.run(host='0.0.0.0', port=5000, debug=False)
