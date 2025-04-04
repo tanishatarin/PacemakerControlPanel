@@ -79,6 +79,7 @@ def handle_down_button():
         down_button_pressed = True
         print("Down button pressed")
         
+# Add more detailed logging in the left button handler
 def handle_left_button():
     global last_left_press_time, left_button_pressed
     current_time = time.time()
@@ -87,7 +88,8 @@ def handle_left_button():
     if current_time - last_left_press_time > 0.3:
         last_left_press_time = current_time
         left_button_pressed = True
-        print("Left button pressed")
+        print("Left button pressed - DEBUG FLAG SET TO TRUE!")
+
 
 # Function to update the current rate value
 def update_rate():
@@ -349,19 +351,23 @@ def reset_v_output():
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed
     
+    # Add debug logging
+    if left_button_pressed:
+        print("Health check reporting left button as pressed: TRUE")
+        
     # Create response data
     status_data = {
-        'status': 'ok',
-        'rate': current_rate,
-        'a_output': current_a_output,
-        'v_output': current_v_output,
-        'locked': is_locked,
-        'buttons': {
-            'up_pressed': up_button_pressed,
-            'down_pressed': down_button_pressed,
-            'left_pressed': left_button_pressed
-        }
+    'status': 'ok',
+    'rate': current_rate,
+    'a_output': current_a_output,
+    'v_output': current_v_output,
+    'locked': is_locked,
+    'buttons': {
+        'up_pressed': up_button_pressed,
+        'down_pressed': down_button_pressed,
+        'left_pressed': left_button_pressed
     }
+}
     
     # Reset button states
     was_up_pressed = up_button_pressed
@@ -379,6 +385,9 @@ def health_check():
     up_button_pressed = False
     down_button_pressed = False
     left_button_pressed = False
+    
+    if was_left_pressed:
+        print("Reset left_button_pressed back to FALSE")
     
     return jsonify(status_data)
 

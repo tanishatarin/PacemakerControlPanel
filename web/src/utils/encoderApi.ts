@@ -261,10 +261,17 @@ export function startEncoderPolling(
         window.dispatchEvent(downEvent);
       }
       
+      // In the mainPoller function in startEncoderPolling
       if (status.buttons?.left_pressed) {
-        console.log("Left button press detected via health check");
+        // Add more detailed logging
+        console.log("Left button press detected via health check", JSON.stringify(status.buttons));
+        
+        // Create a new event with a clean name
         const leftEvent = new CustomEvent('hardware-left-button-pressed');
+        
+        // Dispatch the event and log it
         window.dispatchEvent(leftEvent);
+        console.log("Left button event dispatched");
       }
       
       // Prepare control update data
