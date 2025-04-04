@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
@@ -393,7 +393,7 @@ const ControlPanel: React.FC = () => {
   //   }
   // };
 
-  const handleModeNavigation = (direction: 'up' | 'down') => {
+  const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
     resetAutoLockTimer();
     
     if (isLocked) {
@@ -417,7 +417,7 @@ const ControlPanel: React.FC = () => {
     } else {
       setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
     }
-  };
+  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length]);
   
   // Set up listener for hardware up button press
   useEffect(() => {

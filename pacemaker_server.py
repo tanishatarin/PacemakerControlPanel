@@ -51,6 +51,19 @@ max_v_output = 25.0
 last_a_output_steps = 100
 last_v_output_steps = 100
 
+up_button_pressed = False
+last_up_press_time = 0
+
+def handle_up_button():
+    global last_up_press_time, up_button_pressed
+    current_time = time.time()
+    
+    # Debounce logic - only register a press if it's been at least 300ms since the last one
+    if current_time - last_up_press_time > 0.3:
+        last_up_press_time = current_time
+        up_button_pressed = True
+        print("Up button pressed")
+
 # Function to update the current rate value
 def update_rate():
     global current_rate
@@ -157,6 +170,9 @@ rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
 lock_button.when_pressed = toggle_lock
+
+up_button.when_released = handle_up_button
+
 
 # API endpoints for Lock status
 @app.route('/api/lock', methods=['GET'])
@@ -318,16 +334,29 @@ def reset_v_output():
     current_v_output = 10.0
     print("V. Output reset to 10.0 mA!")
 
-# Health check endpoint
+# health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    return jsonify({
+    global up_button_pressed
+    status_data = {
         'status': 'ok',
         'rate': current_rate,
         'a_output': current_a_output,
         'v_output': current_v_output,
-        'locked': is_locked
-    })
+        'locked': is_locked,
+        'buttons': {
+            'up_pressed': up_button_pressed
+        }
+    }
+    
+    # Reset the flag after reporting
+    was_pressed = up_button_pressed
+    up_button_pressed = False
+    
+    if was_pressed:
+        print("Reporting up button press via health check")
+        
+    return jsonify(status_data)
 
 # API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
