@@ -70,29 +70,130 @@ const ControlPanel: React.FC = () => {
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
   
+  // Show error when trying to adjust while locked
+  const handleLockError = useCallback(() => {
+    setShowLockMessage(true);
+    setTimeout(() => setShowLockMessage(false), 3000);
+  }, []);
+
+  // Auto-lock timer management
+  const resetAutoLockTimer = useCallback(() => {
+    if (autoLockTimer) {
+      clearTimeout(autoLockTimer);
+    }
+    
+    const newTimer = setTimeout(() => {
+      setIsLocked(true);
+      // Add these lines to update hardware lock state
+      if (encoderConnected) {
+        toggleLock().catch(err => console.error('Failed to toggle hardware lock state:', err));
+      }
+    }, 60000); // 1 minute
+    
+    setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
+  }, [autoLockTimer, encoderConnected]);
+
+  // Handle mode navigation - memoized with useCallback
+  const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
+    resetAutoLockTimer();
+    
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    // If we're in DDD settings, handle navigation within those settings
+    if (showDDDSettings) {
+      if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
+        setSelectedDDDSetting('aSensitivity');
+      } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
+        setSelectedDDDSetting('vSensitivity');
+      }
+      return;
+    }
+    
+    // Otherwise handle regular mode navigation
+    if (direction === 'up') {
+      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
+    } else {
+      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
+    }
+  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
+
+  // Memoize the handleLeftArrowPress function
+  const handleLeftArrowPress = useCallback(() => {
+    resetAutoLockTimer();
+    
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    // If we're in a settings screen, go back to the mode selection
+    if (showDDDSettings || showVVISettings || showDOOSettings) {
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+      return;
+    }
+    
+    // Otherwise, apply the selected mode and show appropriate settings
+    setSelectedModeIndex(pendingModeIndex);
+    const newMode = modes[pendingModeIndex];
+    
+    // Check if mode requires special settings screen
+    if (newMode === 'DDD') {
+      setShowDDDSettings(true);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'VVI') {
+      setShowVVISettings(true);
+      setShowDDDSettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'DOO') {
+      setShowDOOSettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+    } else {
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+    }
+    
+    // If exiting async message mode
+    if (showAsyncMessage) {
+      setShowAsyncMessage(false);
+    }
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
+
   // Check encoder connection on startup
   useEffect(() => {
     const checkConnection = async () => {
-      const status = await checkEncoderStatus();
-      if (status) {
-        setEncoderConnected(true);
-        setHardwareStatus(status);
-        
-        // checks lock state 
-        if (status.locked !== undefined) {
-          setIsLocked(status.locked);
-        } else {
-          // If not in status, try to get it directly
-          const lockState = await getLockState();
-          if (lockState !== null) {
-            setIsLocked(lockState);
+      try {
+        const status = await checkEncoderStatus();
+        if (status) {
+          setEncoderConnected(true);
+          setHardwareStatus(status);
+          
+          // checks lock state 
+          if (status.locked !== undefined) {
+            setIsLocked(status.locked);
+          } else {
+            // If not in status, try to get it directly
+            const lockState = await getLockState();
+            if (lockState !== null) {
+              setIsLocked(lockState);
+            }
           }
-        }
 
-        console.log('Connected to encoder API:', status);
-      } else {
+          console.log('Connected to encoder API:', status);
+        } else {
+          setEncoderConnected(false);
+          console.log('Could not connect to encoder API');
+        }
+      } catch (e) {
+        console.error('Error in connection check:', e);
         setEncoderConnected(false);
-        console.log('Could not connect to encoder API');
       }
     };
     
@@ -188,81 +289,7 @@ const ControlPanel: React.FC = () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, localControlActive]);
-
-
-  // useEffect(() => {
-  //   if (!encoderConnected) return;
-    
-  //   console.log('Starting encoder polling');
-    
-  //   const stopPolling = startEncoderPolling(
-  //     // Control values callback
-  //     (data: EncoderControlData) => {
-  //       // Don't update UI from hardware while user is actively controlling
-  //       if (localControlActive) {
-  //         console.log('Ignoring hardware update during local control');
-  //         return;
-  //       }
-        
-  //       // Update local state from hardware
-  //       if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
-  //         setRate(data.rate);
-  //       }
-        
-  //       if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
-  //         setAOutput(data.a_output);
-  //       }
-        
-  //       if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
-  //         setVOutput(data.v_output);
-  //       }
-
-  //       // handles lock state changes
-  //       if (data.locked !== undefined && data.locked !== isLocked) {
-  //         setIsLocked(data.locked);
-  //         if (data.locked) {
-  //           // If device just locked, clear any auto-lock timer
-  //           if (autoLockTimer) {
-  //             clearTimeout(autoLockTimer);
-  //             setAutoLockTimer(null);
-  //           }
-  //         }
-  //       }
-  //     },
-  //     // Status callback
-  //     (status) => {
-  //       setHardwareStatus(status);
-  //     },
-  //     // Poll interval
-  //     100,
-  //     // Skip updates from these sources
-  //     ['frontend']
-  //   );
-      
-  //   return () => {
-  //     console.log('Stopping encoder polling');
-  //     stopPolling();
-  //   };
-  // }, [encoderConnected, rate, aOutput, vOutput, localControlActive]);
-
-
-  // Auto-lock timer management
-  const resetAutoLockTimer = () => {
-    if (autoLockTimer) {
-      clearTimeout(autoLockTimer);
-    }
-    
-    const newTimer = setTimeout(() => {
-      setIsLocked(true);
-      // Add these lines to update hardware lock state
-      if (encoderConnected) {
-        toggleLock().catch(err => console.error('Failed to toggle hardware lock state:', err));
-      }
-    }, 60000); // 1 minute
-    
-    setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
-  };
+  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked]);
 
   // Handle pause button functionality
   useEffect(() => {
@@ -377,48 +404,6 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // Handle mode navigation
-  // const handleModeNavigation = (direction: 'up' | 'down') => {
-  //   resetAutoLockTimer();
-    
-  //   if (isLocked) {
-  //     handleLockError();
-  //     return;
-  //   }
-    
-  //   if (direction === 'up') {
-  //     setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
-  //   } else {
-  //     setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
-  //   }
-  // };
-
-  const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
-    resetAutoLockTimer();
-    
-    if (isLocked) {
-      handleLockError();
-      return;
-    }
-    
-    // If we're in DDD settings, handle navigation within those settings
-    if (showDDDSettings) {
-      if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
-        setSelectedDDDSetting('aSensitivity');
-      } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
-        setSelectedDDDSetting('vSensitivity');
-      }
-      return;
-    }
-    
-    // Otherwise handle regular mode navigation
-    if (direction === 'up') {
-      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
-    } else {
-      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
-    }
-  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length]);
-  
   // Set up listener for hardware up button press
   useEffect(() => {
     const handleHardwareUpButtonPress = () => {
@@ -433,7 +418,7 @@ const ControlPanel: React.FC = () => {
     return () => {
       window.removeEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
     };
-  }, [handleModeNavigation]); // Only depends on handleModeNavigation now
+  }, [handleModeNavigation]);
 
   // Set up listener for hardware down button press
   useEffect(() => {
@@ -442,82 +427,95 @@ const ControlPanel: React.FC = () => {
       handleModeNavigation('down');
     };
 
+    // Add event listener for the custom event
+    window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+    };
+  }, [handleModeNavigation]);
+
   // Set up listener for hardware left button press
-useEffect(() => {
-  const handleHardwareLeftButtonPress = () => {
-    console.log("Hardware left button press detected");
-    handleLeftArrowPress();
-  };
+  useEffect(() => {
+    const handleHardwareLeftButtonPress = () => {
+      console.log("Hardware left button press detected");
+      handleLeftArrowPress();
+    };
 
-  // Add event listener for the custom event
-  window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+    // Add event listener for the custom event
+    window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
 
-  // Clean up
-  return () => {
-    window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
-  };
-}, [handleLeftArrowPress]); // Use the memoized version of handleLeftArrowPress if available
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+    };
+  }, [handleLeftArrowPress]);
 
+  // Add a dedicated hook to synchronize lock state from hardware to UI
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    const checkLockState = async () => {
+      try {
+        const lockState = await getLockState();
+        if (lockState !== null && lockState !== isLocked) {
+          setIsLocked(lockState);
+          
+          // If device just unlocked, reset the auto-lock timer
+          if (!lockState && autoLockTimer) {
+            resetAutoLockTimer();
+          }
+          
+          // If device just locked, clear any auto-lock timer
+          if (lockState && autoLockTimer) {
+            clearTimeout(autoLockTimer);
+            setAutoLockTimer(null);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking lock state:', error);
+      }
+    };
+    
+    // Initial check
+    checkLockState();
+    
+    // Check every 100ms for lock state changes
+    const interval = setInterval(checkLockState, 100);
+    
+    return () => clearInterval(interval);
+  }, [encoderConnected, isLocked, autoLockTimer, resetAutoLockTimer]);
 
-  // Add event listener for the custom event
-  window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
-
-  // Clean up
-  return () => {
-    window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
-  };
-}, [handleModeNavigation]); // Use the memoized version of handleModeNavigation
-
-// Memoize the handleLeftArrowPress function
-const handleLeftArrowPress = useCallback(() => {
-  resetAutoLockTimer();
-  
-  if (isLocked) {
-    handleLockError();
-    return;
-  }
-  
-  // If we're in a settings screen, go back to the mode selection
-  if (showDDDSettings || showVVISettings || showDOOSettings) {
-    setShowDDDSettings(false);
-    setShowVVISettings(false);
-    setShowDOOSettings(false);
-    return;
-  }
-  
-  // Otherwise, apply the selected mode and show appropriate settings
-  setSelectedModeIndex(pendingModeIndex);
-  const newMode = modes[pendingModeIndex];
-  
-  // Check if mode requires special settings screen
-  if (newMode === 'DDD') {
-    setShowDDDSettings(true);
-    setShowVVISettings(false);
-    setShowDOOSettings(false);
-  } else if (newMode === 'VVI') {
-    setShowVVISettings(true);
-    setShowDDDSettings(false);
-    setShowDOOSettings(false);
-  } else if (newMode === 'DOO') {
-    setShowDOOSettings(true);
-    setShowDDDSettings(false);
-    setShowVVISettings(false);
-  } else {
-    setShowDDDSettings(false);
-    setShowVVISettings(false);
-    setShowDOOSettings(false);
-  }
-  
-  // If exiting async message mode
-  if (showAsyncMessage) {
-    setShowAsyncMessage(false);
-  }
-}, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, resetAutoLockTimer]);
-
-  // Show error when trying to adjust while locked
-  const handleLockError = () => {
-    setShowLockMessage(true);
-    setTimeout(() => setShowLockMessage(false), 3000);
+  // Toggle lock state
+  const handleLockToggle = async () => {
+    resetAutoLockTimer();
+    
+    // Toggle the lock state locally first for immediate UI feedback
+    const newLockState = !isLocked;
+    setIsLocked(newLockState);
+    
+    // Update the lock LED state
+    if (encoderConnected) {
+      try {
+        // Use the toggleLock function but don't wait for it to complete
+        toggleLock().then((hardwareLockState) => {
+          // If the hardware returns a different state than expected, update our UI
+          if (hardwareLockState !== null && hardwareLockState !== newLockState) {
+            console.log("Hardware lock state doesn't match UI state, updating UI");
+            setIsLocked(hardwareLockState);
+          }
+        }).catch(err => {
+          console.error('Failed to toggle hardware lock state:', err);
+          // Revert UI state if hardware toggle fails
+          setIsLocked(isLocked);
+        });
+      } catch (err) {
+        console.error('Failed to toggle hardware lock state:', err);
+        // Revert UI state if hardware toggle fails
+        setIsLocked(isLocked);
+      }
+    }
   };
 
   // Activate emergency mode
@@ -569,73 +567,6 @@ const handleLeftArrowPress = useCallback(() => {
   const handlePauseEnd = () => {
     setIsPausing(false);
   };
-
-  // Toggle lock state
-  const handleLockToggle = async () => {
-    resetAutoLockTimer();
-    
-    // Toggle the lock state locally first for immediate UI feedback
-    const newLockState = !isLocked;
-    setIsLocked(newLockState);
-    
-    // Update the lock LED state
-    if (encoderConnected) {
-      try {
-        // Use the toggleLock function but don't wait for it to complete
-        toggleLock().then((hardwareLockState) => {
-          // If the hardware returns a different state than expected, update our UI
-          if (hardwareLockState !== null && hardwareLockState !== newLockState) {
-            console.log("Hardware lock state doesn't match UI state, updating UI");
-            setIsLocked(hardwareLockState);
-          }
-        }).catch(err => {
-          console.error('Failed to toggle hardware lock state:', err);
-          // Revert UI state if hardware toggle fails
-          setIsLocked(isLocked);
-        });
-      } catch (err) {
-        console.error('Failed to toggle hardware lock state:', err);
-        // Revert UI state if hardware toggle fails
-        setIsLocked(isLocked);
-      }
-    }
-  };
-
-  // Add a dedicated hook to synchronize lock state from hardware to UI
-  useEffect(() => {
-    if (!encoderConnected) return;
-    
-    const checkLockState = async () => {
-      try {
-        const lockState = await getLockState();
-        if (lockState !== null && lockState !== isLocked) {
-          setIsLocked(lockState);
-          
-          // If device just unlocked, reset the auto-lock timer
-          if (!lockState && autoLockTimer) {
-            resetAutoLockTimer();
-          }
-          
-          // If device just locked, clear any auto-lock timer
-          if (lockState && autoLockTimer) {
-            clearTimeout(autoLockTimer);
-            setAutoLockTimer(null);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking lock state:', error);
-      }
-    };
-    
-    // Initial check
-    checkLockState();
-    
-    // Check every 100ms for lock state changes
-    const interval = setInterval(checkLockState, 100);
-    
-    return () => clearInterval(interval);
-  }, [encoderConnected, isLocked, autoLockTimer]);
-
     
   // Render the appropriate mode panel
   const renderModePanel = () => {

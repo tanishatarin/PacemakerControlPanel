@@ -22,20 +22,15 @@ export interface ApiStatus {
     v_output_encoder?: {
       rotation_count: number;
     };
-    buttons?: {
-      up_pressed: boolean;
-      down_pressed: boolean;
-      left_pressed: boolean;
-    };
   };
-  buttons?: {
-    up_pressed: boolean;
-    down_pressed: boolean;
-    left_pressed: boolean;
+  buttons?: { 
+    up_pressed?: boolean;
+    down_pressed?: boolean;
+    left_pressed?: boolean;
   };
 }
 
-const API_BASE_URL = 'http://raspberrypi.local:5000'; // Update with your Raspberry Pi hostname or IP
+const API_BASE_URL = 'http://raspberrypi.local:5000';
 
 // Check if the encoder API is available
 export async function checkEncoderStatus(): Promise<ApiStatus | null> {

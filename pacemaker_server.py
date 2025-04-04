@@ -373,8 +373,11 @@ def reset_v_output():
 
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed
+    
+    # Create response data
     status_data = {
         'status': 'ok',
         'rate': current_rate,
@@ -388,7 +391,7 @@ def health_check():
         }
     }
     
-    # Reset the flags after reporting
+    # Reset button states
     was_up_pressed = up_button_pressed
     was_down_pressed = down_button_pressed
     was_left_pressed = left_button_pressed
@@ -396,15 +399,7 @@ def health_check():
     down_button_pressed = False
     left_button_pressed = False
     
-    if was_up_pressed:
-        print("Reporting up button press via health check")
-    if was_down_pressed:
-        print("Reporting down button press via health check")
-    if was_left_pressed:
-        print("Reporting left button press via health check")
-        
     return jsonify(status_data)
-
 
 # API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
