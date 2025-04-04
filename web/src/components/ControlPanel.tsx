@@ -18,7 +18,6 @@ import {
   EncoderControlData
 } from '../utils/encoderApi';
 
-
 const ControlPanel: React.FC = () => {
   // Main control values
   const [rate, setRate] = useState(80);
@@ -93,33 +92,6 @@ const ControlPanel: React.FC = () => {
     setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
   }, [autoLockTimer, encoderConnected]);
 
-  // Handle mode navigation - memoized with useCallback
-  const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
-    resetAutoLockTimer();
-    
-    if (isLocked) {
-      handleLockError();
-      return;
-    }
-    
-    // If we're in DDD settings, handle navigation within those settings
-    if (showDDDSettings) {
-      if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
-        setSelectedDDDSetting('aSensitivity');
-      } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
-        setSelectedDDDSetting('vSensitivity');
-      }
-      return;
-    }
-    
-    // Otherwise handle regular mode navigation
-    if (direction === 'up') {
-      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
-    } else {
-      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
-    }
-  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
-
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
@@ -165,6 +137,33 @@ const ControlPanel: React.FC = () => {
       setShowAsyncMessage(false);
     }
   }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
+
+  // Handle mode navigation
+  const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
+    resetAutoLockTimer();
+    
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    // If we're in DDD settings, handle navigation within those settings
+    if (showDDDSettings) {
+      if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
+        setSelectedDDDSetting('aSensitivity');
+      } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
+        setSelectedDDDSetting('vSensitivity');
+      }
+      return;
+    }
+    
+    // Otherwise handle regular mode navigation
+    if (direction === 'up') {
+      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
+    } else {
+      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
+    }
+  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
 
   // Check encoder connection on startup
   useEffect(() => {
@@ -404,51 +403,41 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // Set up listener for hardware up button press
+  // Set up listeners for hardware buttons
   useEffect(() => {
     const handleHardwareUpButtonPress = () => {
       console.log("Hardware up button press detected");
       handleModeNavigation('up');
     };
-
-    // Add event listener for the custom event
+    
     window.addEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
-
-    // Clean up
+    
     return () => {
       window.removeEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
     };
   }, [handleModeNavigation]);
 
-  // Set up listener for hardware down button press
   useEffect(() => {
     const handleHardwareDownButtonPress = () => {
       console.log("Hardware down button press detected");
       handleModeNavigation('down');
     };
-
-    // Add event listener for the custom event
+    
     window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
-
-    // Clean up
+    
     return () => {
       window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
     };
   }, [handleModeNavigation]);
 
-  // Set up listener for hardware left button press - add this separately
   useEffect(() => {
     const handleHardwareLeftButtonPress = () => {
-      console.log("Hardware left button press detected in handler");
+      console.log("Hardware left button press detected");
       handleLeftArrowPress();
     };
-
-    console.log("Setting up left button event listener");
-
-    // Add event listener for the custom event 
+    
     window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
-
-    // Clean up
+    
     return () => {
       window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
     };

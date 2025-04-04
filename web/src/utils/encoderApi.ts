@@ -23,14 +23,15 @@ export interface ApiStatus {
       rotation_count: number;
     };
   };
-  buttons?: { 
+  buttons?: {
     up_pressed?: boolean;
     down_pressed?: boolean;
     left_pressed?: boolean;
   };
 }
 
-const API_BASE_URL = 'http://raspberrypi.local:5000';
+// Change this to your actual Raspberry Pi IP address or hostname
+const API_BASE_URL = 'http://localhost:5000';
 
 // Check if the encoder API is available
 export async function checkEncoderStatus(): Promise<ApiStatus | null> {
@@ -66,7 +67,7 @@ export async function toggleLock(): Promise<boolean | null> {
     
     if (response.ok) {
       const data = await response.json();
-      console.log("Lock toggle response:", data); // Add logging for debugging
+      console.log("Lock toggle response:", data);
       return data.locked;
     }
     return null;
@@ -250,21 +251,20 @@ export function startEncoderPolling(
       // Detect and dispatch button presses
       if (status.buttons?.up_pressed) {
         console.log("Up button press detected via health check");
-        const event = new CustomEvent('hardware-up-button-pressed');
-        window.dispatchEvent(event);
+        const upEvent = new CustomEvent('hardware-up-button-pressed');
+        window.dispatchEvent(upEvent);
       }
       
       if (status.buttons?.down_pressed) {
         console.log("Down button press detected via health check");
-        const event = new CustomEvent('hardware-down-button-pressed');
-        window.dispatchEvent(event);
+        const downEvent = new CustomEvent('hardware-down-button-pressed');
+        window.dispatchEvent(downEvent);
       }
       
-      // Explicitly log if we're detecting the left button press for debugging
       if (status.buttons?.left_pressed) {
-        console.log("Left button press detected via health check", status.buttons);
-        const event = new CustomEvent('hardware-left-button-pressed');
-        window.dispatchEvent(event);
+        console.log("Left button press detected via health check");
+        const leftEvent = new CustomEvent('hardware-left-button-pressed');
+        window.dispatchEvent(leftEvent);
       }
       
       // Prepare control update data
