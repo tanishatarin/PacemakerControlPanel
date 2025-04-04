@@ -65,6 +65,11 @@ const ControlPanel: React.FC = () => {
   // VVI Mode specific state
   const [vviSensitivity, setVviSensitivity] = useState(2.0);
   
+  // Button handlers persist references
+  const upButtonHandler = useRef<((event: Event) => void) | null>(null);
+  const downButtonHandler = useRef<((event: Event) => void) | null>(null);
+  const leftButtonHandler = useRef<((event: Event) => void) | null>(null);
+  
   const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
@@ -94,6 +99,7 @@ const ControlPanel: React.FC = () => {
 
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
+    console.log("Left arrow press function called");
     resetAutoLockTimer();
     
     if (isLocked) {
@@ -403,52 +409,63 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // Set up listeners for hardware buttons
+  // Set up listeners for hardware buttons once on mount
   useEffect(() => {
-    const handleHardwareUpButtonPress = () => {
-      console.log("Hardware up button press detected");
-      handleModeNavigation('up');
-    };
+    // Only create the handlers once
+    if (!upButtonHandler.current) {
+      upButtonHandler.current = () => {
+        console.log("Up button press detected");
+        handleModeNavigation('up');
+      };
+    }
     
-    window.addEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
+    // Add event listener for up button
+    window.addEventListener('hardware-up-button-pressed', upButtonHandler.current);
     
     return () => {
-      window.removeEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
+      if (upButtonHandler.current) {
+        window.removeEventListener('hardware-up-button-pressed', upButtonHandler.current);
+      }
     };
-  }, [handleModeNavigation]);
+  }, []); // Empty dependency array to only run once
 
   useEffect(() => {
-    const handleHardwareDownButtonPress = () => {
-      console.log("Hardware down button press detected");
-      handleModeNavigation('down');
-    };
+    // Only create the handlers once
+    if (!downButtonHandler.current) {
+      downButtonHandler.current = () => {
+        console.log("Down button press detected");
+        handleModeNavigation('down');
+      };
+    }
     
-    window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+    // Add event listener for down button
+    window.addEventListener('hardware-down-button-pressed', downButtonHandler.current);
     
     return () => {
-      window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+      if (downButtonHandler.current) {
+        window.removeEventListener('hardware-down-button-pressed', downButtonHandler.current);
+      }
     };
-  }, [handleModeNavigation]);
+  }, []); // Empty dependency array to only run once
 
-  // Set up listener for hardware left button press
   useEffect(() => {
-    // Define handler with detailed logging
-    const handleHardwareLeftButtonPress = () => {
-      console.log("🔴 LEFT BUTTON press detected in handler");
-      handleLeftArrowPress();
-    };
+    // Only create the handlers once
+    if (!leftButtonHandler.current) {
+      leftButtonHandler.current = () => {
+        console.log("LEFT BUTTON PRESSED - HANDLER ACTIVATED");
+        handleLeftArrowPress();
+      };
+    }
     
-    console.log("Setting up left button event listener");
+    // Add event listener for left button
+    window.addEventListener('hardware-left-button-pressed', leftButtonHandler.current);
     
-    // Add event listener for the custom event
-    window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
-    
-    // Clean up
     return () => {
-      console.log("Removing left button event listener");
-      window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+      if (leftButtonHandler.current) {
+        window.removeEventListener('hardware-left-button-pressed', leftButtonHandler.current);
+      }
     };
-  }, [handleLeftArrowPress]);
+  }, []); // Empty dependency array to only run once
 
   // Add a dedicated hook to synchronize lock state from hardware to UI
   useEffect(() => {
@@ -629,14 +646,14 @@ const ControlPanel: React.FC = () => {
         onBatteryChange={setBatteryLevel}
       />
 
-    {/* Encoder Connection Status */}
-    {encoderConnected && (
-      <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
-        Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
-          ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
-          : ''}
-      </div>
-    )}
+      {/* Encoder Connection Status */}
+      {encoderConnected && (
+        <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
+          Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
+            ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
+            : ''}
+        </div>
+      )}
 
       {/* Emergency Mode Button */}
       <button
@@ -651,7 +668,7 @@ const ControlPanel: React.FC = () => {
       {/* Main Controls */}
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
         
-      <HardwareRateControl
+        <HardwareRateControl
           value={rate}
           onChange={setRate}
           isLocked={isLocked}

@@ -33,6 +33,13 @@ export interface ApiStatus {
 // Change this to your actual Raspberry Pi IP address or hostname
 const API_BASE_URL = 'http://localhost:5000';
 
+// Track previous button states to avoid duplicate events
+let previousButtonStates = {
+  up_pressed: false,
+  down_pressed: false,
+  left_pressed: false
+};
+
 // Check if the encoder API is available
 export async function checkEncoderStatus(): Promise<ApiStatus | null> {
   try {
@@ -249,29 +256,32 @@ export function startEncoderPolling(
       onStatusUpdate(status);
       
       // Detect and dispatch button presses
-      if (status.buttons?.up_pressed) {
-        console.log("Up button press detected via health check");
-        const upEvent = new CustomEvent('hardware-up-button-pressed');
-        window.dispatchEvent(upEvent);
-      }
-      
-      if (status.buttons?.down_pressed) {
-        console.log("Down button press detected via health check");
-        const downEvent = new CustomEvent('hardware-down-button-pressed');
-        window.dispatchEvent(downEvent);
-      }
-      
-      // In the mainPoller function in startEncoderPolling
-      if (status.buttons?.left_pressed) {
-        // Add more detailed logging
-        console.log("Left button press detected via health check", JSON.stringify(status.buttons));
+      if (status.buttons) {
+        // Only dispatch events when button state changes from false to true
+        if (status.buttons.up_pressed && !previousButtonStates.up_pressed) {
+          console.log("Up button press detected via health check");
+          const upEvent = new CustomEvent('hardware-up-button-pressed');
+          window.dispatchEvent(upEvent);
+        }
         
-        // Create a new event with a clean name
-        const leftEvent = new CustomEvent('hardware-left-button-pressed');
+        if (status.buttons.down_pressed && !previousButtonStates.down_pressed) {
+          console.log("Down button press detected via health check");
+          const downEvent = new CustomEvent('hardware-down-button-pressed');
+          window.dispatchEvent(downEvent);
+        }
         
-        // Dispatch the event and log it
-        window.dispatchEvent(leftEvent);
-        console.log("Left button event dispatched");
+        if (status.buttons.left_pressed && !previousButtonStates.left_pressed) {
+          console.log("Left button press detected via health check");
+          const leftEvent = new CustomEvent('hardware-left-button-pressed');
+          window.dispatchEvent(leftEvent);
+        }
+        
+        // Update previous button states
+        previousButtonStates = { 
+          up_pressed: !!status.buttons.up_pressed,
+          down_pressed: !!status.buttons.down_pressed,
+          left_pressed: !!status.buttons.left_pressed
+        };
       }
       
       // Prepare control update data
