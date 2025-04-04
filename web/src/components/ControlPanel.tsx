@@ -436,14 +436,16 @@ const ControlPanel: React.FC = () => {
     };
   }, [handleModeNavigation]);
 
-  // Set up listener for hardware left button press
+  // Set up listener for hardware left button press - add this separately
   useEffect(() => {
     const handleHardwareLeftButtonPress = () => {
-      console.log("Hardware left button press detected");
+      console.log("Hardware left button press detected in handler");
       handleLeftArrowPress();
     };
 
-    // Add event listener for the custom event
+    console.log("Setting up left button event listener");
+
+    // Add event listener for the custom event 
     window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
 
     // Clean up

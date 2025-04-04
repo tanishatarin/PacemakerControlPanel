@@ -260,8 +260,9 @@ export function startEncoderPolling(
         window.dispatchEvent(event);
       }
       
+      // Explicitly log if we're detecting the left button press for debugging
       if (status.buttons?.left_pressed) {
-        console.log("Left button press detected via health check");
+        console.log("Left button press detected via health check", status.buttons);
         const event = new CustomEvent('hardware-left-button-pressed');
         window.dispatchEvent(event);
       }

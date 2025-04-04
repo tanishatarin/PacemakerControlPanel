@@ -88,6 +88,7 @@ def handle_up_button():
         print("Up button pressed")
         
         
+# Make sure this code is correct
 def handle_left_button():
     global last_left_press_time, left_button_pressed
     current_time = time.time()
@@ -96,7 +97,7 @@ def handle_left_button():
     if current_time - last_left_press_time > 0.3:
         last_left_press_time = current_time
         left_button_pressed = True
-        print("Left button pressed")
+        print("Left button pressed - flag set to True")
 
 # Function to update the current rate value
 def update_rate():
@@ -373,9 +374,13 @@ def reset_v_output():
 
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
+# Add debug logging to the health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed
+    
+    if left_button_pressed:
+        print("Health check reporting left button as pressed")
     
     # Create response data
     status_data = {
@@ -390,14 +395,6 @@ def health_check():
             'left_pressed': left_button_pressed
         }
     }
-    
-    # Reset button states
-    was_up_pressed = up_button_pressed
-    was_down_pressed = down_button_pressed
-    was_left_pressed = left_button_pressed
-    up_button_pressed = False
-    down_button_pressed = False
-    left_button_pressed = False
     
     return jsonify(status_data)
 
