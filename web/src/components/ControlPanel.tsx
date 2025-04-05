@@ -112,17 +112,45 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Otherwise handle regular mode navigation
-    if (direction === 'up') {
-      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
-    } else {
-      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
+    // If we're in DOO settings, go back to mode selection
+    if (showDOOSettings) {
+      setShowDOOSettings(false);
+      return;
     }
-  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
+    
+    // Otherwise handle regular mode navigation
+    let newIndex;
+    if (direction === 'up') {
+      newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
+    } else {
+      newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
+    }
+    
+    setPendingModeIndex(newIndex);
+    // Update the selected mode immediately to keep header in sync
+    setSelectedModeIndex(newIndex);
+    
+    // Show settings if needed for the selected mode
+    const newMode = modes[newIndex];
+    if (newMode === 'DDD') {
+      setShowDDDSettings(true);
+      setShowVVISettings(false);
+    } else if (newMode === 'VVI') {
+      setShowVVISettings(true);
+      setShowDDDSettings(false);
+    }
+    
+  }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes, handleLockError, resetAutoLockTimer]);
 
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
+    
+    // Special case: When in DOO Settings, always allow going back regardless of lock state
+    if (showDOOSettings) {
+      setShowDOOSettings(false);
+      return;
+    }
     
     if (isLocked) {
       handleLockError();
@@ -130,10 +158,9 @@ const ControlPanel: React.FC = () => {
     }
     
     // If we're in a settings screen, go back to the mode selection
-    if (showDDDSettings || showVVISettings || showDOOSettings) {
+    if (showDDDSettings || showVVISettings) {
       setShowDDDSettings(false);
       setShowVVISettings(false);
-      setShowDOOSettings(false);
       return;
     }
     
@@ -145,11 +172,9 @@ const ControlPanel: React.FC = () => {
     if (newMode === 'DDD') {
       setShowDDDSettings(true);
       setShowVVISettings(false);
-      setShowDOOSettings(false);
     } else if (newMode === 'VVI') {
       setShowVVISettings(true);
       setShowDDDSettings(false);
-      setShowDOOSettings(false);
     } else if (newMode === 'DOO') {
       setShowDOOSettings(true);
       setShowDDDSettings(false);
@@ -404,14 +429,9 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // Activate emergency mode
+  // Activate emergency mode - don't check for lock 
   const handleEmergencyMode = useCallback(() => {
     resetAutoLockTimer();
-    
-    if (isLocked) {
-      handleLockError();
-      return;
-    }
     
     // Set emergency parameters
     setRate(80);
@@ -436,7 +456,7 @@ const ControlPanel: React.FC = () => {
         v_output: 25.0
       });
     }
-  }, [resetAutoLockTimer, isLocked, handleLockError, modes, encoderConnected]);
+  }, [resetAutoLockTimer, modes, encoderConnected]);
 
   // Set up listener for hardware up button press
   useEffect(() => {
@@ -656,12 +676,10 @@ const ControlPanel: React.FC = () => {
       </div>
     )}
 
-      {/* Emergency Mode Button */}
+      {/* Emergency Mode Button - always active */}
       <button
         onClick={handleEmergencyMode}
-        className={`w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors
-          ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
+        className="w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors"
       >
         DOO Emergency Mode
       </button>

@@ -218,7 +218,7 @@ lock_button.when_pressed = toggle_lock
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
-emergency_button.when_released = handle_emergency_button
+emergency_button.when_pressed = handle_emergency_button  # Use pressed for emergency instead of released
 
 
 # API endpoints for Lock status
