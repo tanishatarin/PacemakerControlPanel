@@ -1,85 +1,162 @@
+// Define API response interfaces
+export interface ApiStatus {
+  status?: string;
+  rate?: number;
+  a_output?: number;
+  v_output?: number;
+  locked?: boolean;
+  emergency_active?: boolean;
+  hardware?: {
+    rate_encoder?: {
+      rotation_count?: number;
+    };
+    a_output_encoder?: {
+      rotation_count?: number;
+    };
+    v_output_encoder?: {
+      rotation_count?: number;
+    };
+    buttons?: {
+      up_pressed?: boolean;
+      down_pressed?: boolean;
+      left_pressed?: boolean;
+      emergency_active?: boolean;
+    };
+  };
+}
+
 export interface EncoderControlData {
   rate?: number;
   a_output?: number;
   v_output?: number;
   locked?: boolean;
+  emergency_active?: boolean;
   active_control?: string;
 }
 
-export interface ApiStatus {
-  status: string;
-  rate?: number;
-  a_output?: number;
-  v_output?: number;
-  locked?: boolean;
-  hardware?: {
-    rate_encoder?: {
-      rotation_count: number;
-    };
-    a_output_encoder?: {
-      rotation_count: number;
-    };
-    v_output_encoder?: {
-      rotation_count: number;
-    };
-  };
-  buttons?: { 
-    up_pressed?: boolean;
-    down_pressed?: boolean;
-    left_pressed?: boolean;
-  };
-}
+// Base URL for API calls
+const apiBaseUrl = 'http://raspberrypi.local:5000/api';
 
-const API_BASE_URL = 'http://raspberrypi.local:5000';
+// Fallback to localhost if raspberrypi.local is not available
+let useLocalhost = false;
 
-// Check if the encoder API is available
-export async function checkEncoderStatus(): Promise<ApiStatus | null> {
+// Function to get the appropriate base URL
+const getBaseUrl = () => {
+  return useLocalhost ? 'http://localhost:5000/api' : apiBaseUrl;
+};
+
+// Utility function to handle API errors
+const handleApiError = async (response: Response) => {
+  if (!response.ok) {
+    // Try to parse error message from response
+    try {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `HTTP error ${response.status}`);
+    } catch (e) {
+      throw new Error(`HTTP error ${response.status}`);
+    }
+  }
+  return response;
+};
+
+// Check encoder API status
+export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/health`, {
+    const response = await fetch(`${getBaseUrl()}/health`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      // Shorter timeout
-      signal: AbortSignal.timeout(1000),
     });
     
     if (response.ok) {
       return await response.json();
     }
+    
+    // If raspberrypi.local fails, try localhost
+    if (!useLocalhost) {
+      useLocalhost = true;
+      return checkEncoderStatus();
+    }
+    
     return null;
   } catch (error) {
     console.error('Error checking encoder status:', error);
+    
+    // If raspberrypi.local fails, try localhost
+    if (!useLocalhost) {
+      useLocalhost = true;
+      return checkEncoderStatus();
+    }
+    
     return null;
   }
-}
+};
 
-// Toggle lock state
-export async function toggleLock(): Promise<boolean | null> {
+// Update control values on the hardware
+export const updateControls = async (data: EncoderControlData): Promise<void> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/lock/toggle`, {
+    const promises = [];
+    
+    if (data.rate !== undefined) {
+      promises.push(
+        fetch(`${getBaseUrl()}/rate/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: data.rate }),
+        }).then(handleApiError)
+      );
+    }
+    
+    if (data.a_output !== undefined) {
+      promises.push(
+        fetch(`${getBaseUrl()}/a_output/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: data.a_output }),
+        }).then(handleApiError)
+      );
+    }
+    
+    if (data.v_output !== undefined) {
+      promises.push(
+        fetch(`${getBaseUrl()}/v_output/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: data.v_output }),
+        }).then(handleApiError)
+      );
+    }
+    
+    await Promise.all(promises);
+  } catch (error) {
+    console.error('Error updating controls:', error);
+    throw error;
+  }
+};
+
+// Toggle the lock state
+export const toggleLock = async (): Promise<boolean | null> => {
+  try {
+    const response = await fetch(`${getBaseUrl()}/lock/toggle`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-    });
+    }).then(handleApiError);
     
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Lock toggle response:", data); // Add logging for debugging
-      return data.locked;
-    }
-    return null;
+    const data = await response.json();
+    return data.locked;
   } catch (error) {
-    console.error('Error toggling lock state:', error);
+    console.error('Error toggling lock:', error);
     return null;
   }
-}
+};
 
-// Get lock state
-export async function getLockState(): Promise<boolean | null> {
+// Get the current lock state
+export const getLockState = async (): Promise<boolean | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/lock`, {
+    const response = await fetch(`${getBaseUrl()}/lock`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -95,223 +172,114 @@ export async function getLockState(): Promise<boolean | null> {
     console.error('Error getting lock state:', error);
     return null;
   }
-}
+};
 
-// Update control values on the hardware
-export async function updateControls(data: EncoderControlData): Promise<boolean> {
+// Activate emergency DOO mode
+export const activateEmergencyMode = async (): Promise<boolean> => {
   try {
-    // Process each control individually if present
-    const promises = [];
-    
-    if (data.rate !== undefined) {
-      promises.push(updateRate(data.rate));
-    }
-    
-    if (data.a_output !== undefined) {
-      promises.push(updateAOutput(data.a_output));
-    }
-    
-    if (data.v_output !== undefined) {
-      promises.push(updateVOutput(data.v_output));
-    }
-    
-    // Wait for all updates to complete
-    await Promise.all(promises);
-    return true;
-  } catch (error) {
-    console.error('Error updating controls:', error);
-    return false;
-  }
-}
-
-// Update rate on hardware
-async function updateRate(value: number): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/rate/set`, {
+    const response = await fetch(`${getBaseUrl()}/emergency/activate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ value }),
-    });
+    }).then(handleApiError);
     
-    if (response.ok) {
-      return true;
-    }
-    
-    // If device is locked, handle gracefully
-    if (response.status === 403) {
-      console.log('Cannot update rate: device is locked');
-      return false;
-    }
-    
-    throw new Error(`Failed to update rate: ${response.statusText}`);
+    const data = await response.json();
+    return data.success;
   } catch (error) {
-    console.error('Error updating rate:', error);
+    console.error('Error activating emergency mode:', error);
     return false;
   }
-}
+};
 
-// Update A Output on hardware
-async function updateAOutput(value: number): Promise<boolean> {
+// Get current emergency mode status
+export const getEmergencyModeStatus = async (): Promise<boolean | null> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/a_output/set`, {
-      method: 'POST',
+    const response = await fetch(`${getBaseUrl()}/emergency/status`, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ value }),
     });
     
     if (response.ok) {
-      return true;
+      const data = await response.json();
+      return data.emergency_active;
     }
-    
-    // If device is locked, handle gracefully
-    if (response.status === 403) {
-      console.log('Cannot update A Output: device is locked');
-      return false;
-    }
-    
-    throw new Error(`Failed to update A Output: ${response.statusText}`);
+    return null;
   } catch (error) {
-    console.error('Error updating A Output:', error);
-    return false;
+    console.error('Error getting emergency mode status:', error);
+    return null;
   }
-}
+};
 
-// Update V Output on hardware
-async function updateVOutput(value: number): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/v_output/set`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ value }),
-    });
-    
-    if (response.ok) {
-      return true;
-    }
-    
-    // If device is locked, handle gracefully
-    if (response.status === 403) {
-      console.log('Cannot update V Output: device is locked');
-      return false;
-    }
-    
-    throw new Error(`Failed to update V Output: ${response.statusText}`);
-  } catch (error) {
-    console.error('Error updating V Output:', error);
-    return false;
-  }
-}
-
-// Start polling the encoder hardware at regular intervals
-export function startEncoderPolling(
-  onControlUpdate: (data: EncoderControlData) => void,
+// Start polling the encoder API
+export const startEncoderPolling = (
+  onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
-  interval = 200,
-  ignoreSourceList: string[] = []
-): () => void {
-  let lastSourceRef = { source: 'init', time: Date.now() };
-  let lastLockState: boolean | null = null;
+  pollInterval = 100,
+  ignoreUpdateSources: string[] = []
+) => {
+  let isPolling = true;
   
-  // Add a specific interval for checking lock state (more frequent)
-  const lockCheckInterval = 100; // Check lock state every 100ms
-  
-  // Create a dedicated lock state poller
-  const lockPoller = setInterval(async () => {
-    try {
-      const lockState = await getLockState();
-      if (lockState !== null && lockState !== lastLockState) {
-        // If lock state changed, update it immediately
-        lastLockState = lockState;
-        onControlUpdate({ locked: lockState });
-      }
-    } catch (error) {
-      console.error('Error checking lock state:', error);
-    }
-  }, lockCheckInterval);
-  
-  // Main poller for other controls
-  const mainPoller = setInterval(async () => {
+  const pollHealth = async () => {
+    if (!isPolling) return;
+    
     try {
       const status = await checkEncoderStatus();
       
-      if (!status) {
-        return;
-      }
-      
-      // Update with status information
-      onStatusUpdate(status);
-      
-      // Detect and dispatch button presses
-      if (status.buttons?.up_pressed) {
-        console.log("Up button press detected via health check");
-        const event = new CustomEvent('hardware-up-button-pressed');
-        window.dispatchEvent(event);
-      }
-      
-      if (status.buttons?.down_pressed) {
-        console.log("Down button press detected via health check");
-        const event = new CustomEvent('hardware-down-button-pressed');
-        window.dispatchEvent(event);
-      }
-      
-      if (status.buttons?.left_pressed) {
-        console.log("Left button press detected via health check");
-        const event = new CustomEvent('hardware-left-button-pressed');
-        window.dispatchEvent(event);
-      }
-      
-      // Prepare control update data
-      const controlData: EncoderControlData = {};
-      
-      if (status.rate !== undefined) {
-        controlData.rate = status.rate;
-      }
-      
-      if (status.a_output !== undefined) {
-        controlData.a_output = status.a_output;
-      }
-      
-      if (status.v_output !== undefined) {
-        controlData.v_output = status.v_output;
-      }
-      
-      // We handle lock state separately now, but include it for completeness
-      if (status.locked !== undefined && status.locked !== lastLockState) {
-        lastLockState = status.locked;
-        controlData.locked = status.locked;
-      }
-      
-      // Check if we should ignore this update based on source
-      const now = Date.now();
-      const timeSinceLastUpdate = now - lastSourceRef.time;
-      
-      const ignoreUpdate = 
-        timeSinceLastUpdate < 500 && 
-        ignoreSourceList.includes(lastSourceRef.source);
+      if (status) {
+        // Update status data
+        onStatusUpdate(status);
         
-      // Don't ignore lock state updates regardless of source
-      if (ignoreUpdate && !controlData.hasOwnProperty('locked')) {
-        return;
-      }
-      
-      // Send control updates if there's data
-      if (Object.keys(controlData).length > 0) {
-        onControlUpdate(controlData);
+        // Extract control values and pass to data update handler
+        const controlData: EncoderControlData = {
+          rate: status.rate,
+          a_output: status.a_output,
+          v_output: status.v_output,
+          locked: status.locked,
+          emergency_active: status.emergency_active
+        };
+        
+        onDataUpdate(controlData);
+        
+        // Check for button presses
+        if (status.hardware?.buttons) {
+          // Handle up button press
+          if (status.hardware.buttons.up_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-up-button-pressed'));
+          }
+          
+          // Handle down button press
+          if (status.hardware.buttons.down_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-down-button-pressed'));
+          }
+          
+          // Handle left button press
+          if (status.hardware.buttons.left_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-left-button-pressed'));
+          }
+          
+          // Handle emergency button press
+          if (status.hardware.buttons.emergency_active && !status.emergency_active) {
+            window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
+          }
+        }
       }
     } catch (error) {
-      console.error('Error in encoder polling:', error);
+      console.error('Polling error:', error);
+    } finally {
+      if (isPolling) {
+        setTimeout(pollHealth, pollInterval);
+      }
     }
-  }, interval);
+  };
+  
+  // Start initial poll
+  pollHealth();
   
   // Return a function to stop polling
   return () => {
-    clearInterval(mainPoller);
-    clearInterval(lockPoller);
+    isPolling = false;
   };
-}
+};

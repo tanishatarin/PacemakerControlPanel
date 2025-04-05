@@ -23,9 +23,8 @@ up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
 down_button = Button(14, bounce_time=0.05)  # Add down button on pin 14
 left_button = Button(8, bounce_time=0.05)  # Add left button on pin 8
 
-
-# Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
-# lock_led = LED(18)  # GPIO pin for the LED
+# Set up the Emergency DOO button (GPIO 23)
+emergency_button = Button(23, bounce_time=0.05)  # Add emergency button on pin 23
 
 # Initial values
 rate_encoder.steps = 80
@@ -39,6 +38,10 @@ current_v_output = 10.0
 
 # Lock state
 is_locked = False
+
+# Emergency state
+emergency_mode_active = False
+last_emergency_press_time = 0
 
 # Min/max values
 min_rate = 30
@@ -97,6 +100,37 @@ def handle_left_button():
         last_left_press_time = current_time
         left_button_pressed = True
         print("Left button pressed")
+
+def handle_emergency_button():
+    global last_emergency_press_time, emergency_mode_active
+    current_time = time.time()
+    
+    # Debounce logic - only register a press if it's been at least 300ms since the last one
+    if current_time - last_emergency_press_time > 0.3:
+        last_emergency_press_time = current_time
+        
+        # Toggle emergency mode
+        emergency_mode_active = True
+        
+        # Set emergency parameters
+        set_emergency_mode()
+        
+        print("EMERGENCY DOO MODE ACTIVATED!")
+
+def set_emergency_mode():
+    global current_rate, current_a_output, current_v_output
+    
+    # Set fixed emergency mode parameters
+    rate_encoder.steps = 80
+    current_rate = 80
+    
+    a_output_encoder.steps = 200  # Maximum for emergency
+    current_a_output = 20.0
+    
+    v_output_encoder.steps = 250  # Maximum for emergency
+    current_v_output = 25.0
+    
+    print("Emergency DOO Mode parameters set: Rate=80ppm, A.Output=20.0mA, V.Output=25.0mA")
 
 # Function to update the current rate value
 def update_rate():
@@ -208,8 +242,38 @@ lock_button.when_pressed = toggle_lock
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
+emergency_button.when_released = handle_emergency_button
 
 
+# API endpoints for Emergency DOO mode
+@app.route('/api/emergency/status', methods=['GET'])
+def get_emergency_status():
+    return jsonify({
+        'emergency_active': emergency_mode_active
+    })
+
+@app.route('/api/emergency/activate', methods=['POST'])
+def activate_emergency():
+    global emergency_mode_active
+    
+    # Only activate if not already in emergency mode
+    if not emergency_mode_active:
+        emergency_mode_active = True
+        set_emergency_mode()
+        return jsonify({'success': True, 'message': 'Emergency DOO mode activated'})
+    
+    return jsonify({'success': False, 'message': 'Already in emergency mode'})
+
+@app.route('/api/emergency/deactivate', methods=['POST'])
+def deactivate_emergency():
+    global emergency_mode_active
+    
+    # Only deactivate if in emergency mode
+    if emergency_mode_active:
+        emergency_mode_active = False
+        return jsonify({'success': True, 'message': 'Emergency DOO mode deactivated'})
+    
+    return jsonify({'success': False, 'message': 'Not in emergency mode'})
 
 # API endpoints for Lock status
 @app.route('/api/lock', methods=['GET'])
@@ -218,19 +282,6 @@ def get_lock():
         'locked': is_locked
     })
 
-# @app.route('/api/lock/toggle', methods=['POST'])
-# def set_lock():
-#     global is_locked
-#     is_locked = not is_locked
-    
-#     # Update LED based on lock state
-#     if is_locked:
-#         lock_led.on()
-#     else:
-#         lock_led.off()
-        
-#     print(f"Lock state toggled via API: {'Locked' if is_locked else 'Unlocked'}")
-#     return jsonify({'success': True, 'locked': is_locked})
 @app.route('/api/lock/toggle', methods=['POST'])
 def set_lock():
     toggle_lock()  # Use the same function to ensure consistent behavior
@@ -373,9 +424,8 @@ def reset_v_output():
 
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
-@app.route('/api/health', methods=['GET'])
 def health_check():
-    global up_button_pressed, down_button_pressed, left_button_pressed
+    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_mode_active
     
     # Create response data
     status_data = {
@@ -384,6 +434,7 @@ def health_check():
         'a_output': current_a_output,
         'v_output': current_v_output,
         'locked': is_locked,
+        'emergency_active': emergency_mode_active,
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
@@ -404,7 +455,7 @@ def health_check():
 # API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
 def get_hardware_info():
-    global up_button_pressed, down_button_pressed, left_button_pressed
+    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_mode_active
     return jsonify({
         'status': 'ok',
         'hardware': {
@@ -420,7 +471,8 @@ def get_hardware_info():
             'buttons': {
                 'up_pressed': up_button_pressed,
                 'down_pressed': down_button_pressed,
-                'left_pressed': left_button_pressed
+                'left_pressed': left_button_pressed,
+                'emergency_active': emergency_mode_active
             }
         }
     })
@@ -441,4 +493,5 @@ if __name__ == '__main__':
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")
     print(f"Left button on pin GPIO 8")
+    print(f"Emergency DOO button on pin GPIO 23")
     app.run(host='0.0.0.0', port=5000, debug=False)

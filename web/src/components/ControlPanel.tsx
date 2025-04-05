@@ -8,12 +8,15 @@ import DOOSettings from './DOOSettings';
 import HardwareRateControl from './HardwareRateControl';
 import HardwareAOutputControl from './HardwareAOutputControl';
 import HardwareVOutputControl from './HardwareVOutputControl';
+import HardwareEmergencyButton from './HardwareEmergencyButton';
 import { 
   startEncoderPolling, 
   checkEncoderStatus, 
   updateControls, 
   toggleLock, 
   getLockState, 
+  activateEmergencyMode,
+  getEmergencyModeStatus,
   ApiStatus,
   EncoderControlData
 } from '../utils/encoderApi';
@@ -49,6 +52,7 @@ const ControlPanel: React.FC = () => {
   const [encoderConnected, setEncoderConnected] = useState(false);
   const [hardwareStatus, setHardwareStatus] = useState<ApiStatus | null>(null);
   const [localControlActive, setLocalControlActive] = useState(false);
+  const [emergencyModeActive, setEmergencyModeActive] = useState(false);
   
   const [selectedDDDSetting, setSelectedDDDSetting] = useState<'aSensitivity' | 'vSensitivity'>('aSensitivity');
 
@@ -166,6 +170,67 @@ const ControlPanel: React.FC = () => {
     }
   }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
 
+  // Handle emergency mode activation - memoized with useCallback
+  const handleEmergencyMode = useCallback(() => {
+    resetAutoLockTimer();
+    
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    // Set emergency parameters
+    setRate(80);
+    setAOutput(20.0);
+    setVOutput(25.0);
+    
+    // Set to DOO mode
+    const dooIndex = modes.indexOf('DOO');
+    setSelectedModeIndex(dooIndex);
+    setPendingModeIndex(dooIndex);
+    
+    // Show DOO settings
+    setShowDOOSettings(true);
+    setShowDDDSettings(false);
+    setShowVVISettings(false);
+    
+    // Set emergency mode state
+    setEmergencyModeActive(true);
+    
+    // If connected to hardware, send emergency mode settings
+    if (encoderConnected) {
+      // First activate emergency mode at the API level
+      activateEmergencyMode().then(success => {
+        if (success) {
+          console.log('Emergency mode activated via API');
+          
+          // Then update the control values
+          updateControls({
+            rate: 80,
+            a_output: 20.0,
+            v_output: 25.0
+          });
+        }
+      }).catch(err => {
+        console.error('Failed to activate emergency mode:', err);
+      });
+    }
+  }, [resetAutoLockTimer, isLocked, handleLockError, modes, encoderConnected]);
+
+  // Listen for hardware emergency button presses
+  useEffect(() => {
+    const handleHardwareEmergencyPress = () => {
+      console.log("Hardware emergency button press detected");
+      handleEmergencyMode();
+    };
+
+    window.addEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyPress);
+    
+    return () => {
+      window.removeEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyPress);
+    };
+  }, [handleEmergencyMode]);
+
   // Check encoder connection on startup
   useEffect(() => {
     const checkConnection = async () => {
@@ -174,6 +239,12 @@ const ControlPanel: React.FC = () => {
         if (status) {
           setEncoderConnected(true);
           setHardwareStatus(status);
+          
+          // Check emergency mode status
+          if (status.emergency_active) {
+            setEmergencyModeActive(true);
+            handleEmergencyMode();
+          }
           
           // checks lock state 
           if (status.locked !== undefined) {
@@ -202,7 +273,21 @@ const ControlPanel: React.FC = () => {
     // Also check periodically
     const interval = setInterval(checkConnection, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [handleEmergencyMode]);
+
+  // Check emergency mode status on startup
+  useEffect(() => {
+    if (encoderConnected) {
+      getEmergencyModeStatus().then(status => {
+        if (status) {
+          setEmergencyModeActive(true);
+          handleEmergencyMode();
+        }
+      }).catch(err => {
+        console.error('Failed to get emergency mode status:', err);
+      });
+    }
+  }, [encoderConnected, handleEmergencyMode]);
   
   // Handle local value changes and sync to hardware
   const handleLocalValueChange = async (key: string, value: number) => {
@@ -263,7 +348,7 @@ const ControlPanel: React.FC = () => {
           setVOutput(data.v_output);
         }
 
-        // handles lock state changes
+        // Handle lock state changes
         if (data.locked !== undefined && data.locked !== isLocked) {
           setIsLocked(data.locked);
           if (data.locked) {
@@ -272,6 +357,14 @@ const ControlPanel: React.FC = () => {
               clearTimeout(autoLockTimer);
               setAutoLockTimer(null);
             }
+          }
+        }
+        
+        // Handle emergency mode changes
+        if (data.emergency_active !== undefined && data.emergency_active !== emergencyModeActive) {
+          setEmergencyModeActive(data.emergency_active);
+          if (data.emergency_active) {
+            handleEmergencyMode();
           }
         }
       },
@@ -289,7 +382,7 @@ const ControlPanel: React.FC = () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked]);
+  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, emergencyModeActive, handleEmergencyMode]);
 
   // Handle pause button functionality
   useEffect(() => {
@@ -518,40 +611,6 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // Activate emergency mode
-  const handleEmergencyMode = () => {
-    resetAutoLockTimer();
-    
-    if (isLocked) {
-      handleLockError();
-      return;
-    }
-    
-    // Set emergency parameters
-    setRate(80);
-    setAOutput(20.0);
-    setVOutput(25.0);
-    
-    // Set to DOO mode
-    const dooIndex = modes.indexOf('DOO');
-    setSelectedModeIndex(dooIndex);
-    setPendingModeIndex(dooIndex);
-    
-    // Show DOO settings
-    setShowDOOSettings(true);
-    setShowDDDSettings(false);
-    setShowVVISettings(false);
-    
-    // If connected to hardware, send emergency mode settings
-    if (encoderConnected) {
-      updateControls({
-        rate: 80,
-        a_output: 20.0,
-        v_output: 25.0
-      });
-    }
-  };
-
   // Handle pause button states
   const handlePauseStart = () => {
     resetAutoLockTimer();
@@ -641,14 +700,11 @@ const ControlPanel: React.FC = () => {
     )}
 
       {/* Emergency Mode Button */}
-      <button
-        onClick={handleEmergencyMode}
-        className={`w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors
-          ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
-      >
-        DOO Emergency Mode
-      </button>
+      <HardwareEmergencyButton 
+        isLocked={isLocked} 
+        onEmergencyActivate={handleEmergencyMode} 
+        onLockError={handleLockError}
+      />
 
       {/* Main Controls */}
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
