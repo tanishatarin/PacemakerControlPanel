@@ -123,8 +123,32 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // If not in any settings screen, do NOT automatically reset to VOO
-    console.log(`Keeping current mode: ${modes[selectedModeIndex]}`);
+    // Get the current selected mode
+    const currentMode = modes[selectedModeIndex];
+    
+    // Open appropriate settings screen based on current mode
+    switch(currentMode) {
+      case 'DDD':
+        console.log("Opening DDD Settings");
+        setShowDDDSettings(true);
+        setShowVVISettings(false);
+        setShowDOOSettings(false);
+        break;
+      case 'VVI':
+        console.log("Opening VVI Settings");
+        setShowVVISettings(true);
+        setShowDDDSettings(false);
+        setShowDOOSettings(false);
+        break;
+      case 'DOO':
+        console.log("Opening DOO Settings");
+        setShowDOOSettings(true);
+        setShowDDDSettings(false);
+        setShowVVISettings(false);
+        break;
+      default:
+        console.log("No settings screen for this mode");
+    }
     
     // Clear async message if present
     if (showAsyncMessage) {
