@@ -28,6 +28,7 @@ left_button = Button(15, bounce_time=0.05)  # Add left button on pin 8
 # Set up the Emergency DOO button (pin 23)
 emergency_button = Button(23, bounce_time=0.05)  # Add emergency button on pin 23
 
+
 # Initial values
 rate_encoder.steps = 80
 current_rate = 80
@@ -254,7 +255,10 @@ def set_lock():
 # API endpoints for Rate
 @app.route('/api/rate', methods=['GET'])
 def get_rate():
-    update_rate()
+    # Don't update rate if in DOO mode or locked
+    if not (is_locked or current_mode == 5):
+        update_rate()
+        
     return jsonify({
         'value': current_rate,
         'min': min_rate,
@@ -295,7 +299,10 @@ def reset_rate():
 # API endpoints for A. Output
 @app.route('/api/a_output', methods=['GET'])
 def get_a_output():
-    update_a_output()
+    # Don't update a_output if in DOO mode or locked
+    if not (is_locked or current_mode == 5):
+        update_a_output()
+        
     return jsonify({
         'value': current_a_output,
         'min': min_a_output,
@@ -342,7 +349,10 @@ def reset_a_output():
 # API endpoints for V. Output
 @app.route('/api/v_output', methods=['GET'])
 def get_v_output():
-    update_v_output()
+    # Don't update v_output if in DOO mode or locked
+    if not (is_locked or current_mode == 5):
+        update_v_output()
+        
     return jsonify({
         'value': current_v_output,
         'min': min_v_output,
@@ -403,7 +413,10 @@ def set_mode():
             current_mode = new_mode
             # If setting to DOO mode (5), apply emergency settings
             if new_mode == 5:
-                reset_rate()  # Set rate to 80 ppm
+                global current_rate, current_a_output, current_v_output
+                # Force settings for DOO mode
+                current_rate = 80  # Set rate to 80 ppm
+                rate_encoder.steps = 80
                 current_a_output = 20.0  # Set A output to 20 mA
                 current_v_output = 25.0  # Set V output to 25 mA
             return jsonify({'success': True, 'mode': current_mode})
