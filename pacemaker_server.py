@@ -111,14 +111,9 @@ def handle_emergency_button():
 # Function to update the current rate value
 def update_rate():
     global current_rate
-    # Only update if not locked
-    if not is_locked:
-        current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
-        rate_encoder.steps = current_rate
-        print(f"Rate updated: {current_rate} ppm")
-    else:
-        # If locked, reset encoder position to current value without updating
-        rate_encoder.steps = current_rate
+    current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
+    rate_encoder.steps = current_rate
+    print(f"Rate updated: {current_rate} ppm")
 
 # Function to determine the appropriate step size based on the current value
 def get_output_step_size(value):
@@ -143,30 +138,26 @@ def update_a_output():
     
     # If there's a change in steps
     if diff != 0:
-        # Only update if not locked
-        if not is_locked:
-            # Get the step size based on the current value
-            step_size = get_output_step_size(current_a_output)
-            
-            # Apply the change - one encoder step = one logical step
-            # If diff is positive, increase by one step; if negative, decrease by one step
-            if diff > 0:
-                current_a_output += step_size
-            else:
-                current_a_output -= step_size
-                
-            # Ensure the value stays within bounds
-            current_a_output = max(min_a_output, min(current_a_output, max_a_output))
-            
-            # Round to the nearest step size to prevent floating point errors
-            current_a_output = round(current_a_output / step_size) * step_size
-            
-            print(f"A. Output updated: {current_a_output} mA (step size: {step_size}, diff: {diff})")
+        # Get the step size based on the current value
+        step_size = get_output_step_size(current_a_output)
         
-        # Update the encoder position to match the current value (whether locked or not)
-        a_output_encoder.steps = last_a_output_steps
-        # Reset the last step count to the current value
-        last_a_output_steps = current_steps if not is_locked else last_a_output_steps
+        # Apply the change - one encoder step = one logical step
+        # If diff is positive, increase by one step; if negative, decrease by one step
+        if diff > 0:
+            current_a_output += step_size
+        else:
+            current_a_output -= step_size
+            
+        # Ensure the value stays within bounds
+        current_a_output = max(min_a_output, min(current_a_output, max_a_output))
+        
+        # Round to the nearest step size to prevent floating point errors
+        current_a_output = round(current_a_output / step_size) * step_size
+        
+        # Update the encoder position to match the current value
+        last_a_output_steps = current_steps
+        
+        print(f"A. Output updated: {current_a_output} mA (step size: {step_size}, diff: {diff})")
 
 # Function to update the current V. Output value
 def update_v_output():
@@ -180,30 +171,26 @@ def update_v_output():
     
     # If there's a change in steps
     if diff != 0:
-        # Only update if not locked
-        if not is_locked:
-            # Get the step size based on the current value
-            step_size = get_output_step_size(current_v_output)
-            
-            # Apply the change - one encoder step = one logical step
-            # If diff is positive, increase by one step; if negative, decrease by one step
-            if diff > 0:
-                current_v_output += step_size
-            else:
-                current_v_output -= step_size
-                
-            # Ensure the value stays within bounds
-            current_v_output = max(min_v_output, min(current_v_output, max_v_output))
-            
-            # Round to the nearest step size to prevent floating point errors
-            current_v_output = round(current_v_output / step_size) * step_size
-            
-            print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
+        # Get the step size based on the current value
+        step_size = get_output_step_size(current_v_output)
         
-        # Update the encoder position to match the current value (whether locked or not)
-        v_output_encoder.steps = last_v_output_steps
-        # Reset the last step count to the current value
-        last_v_output_steps = current_steps if not is_locked else last_v_output_steps
+        # Apply the change - one encoder step = one logical step
+        # If diff is positive, increase by one step; if negative, decrease by one step
+        if diff > 0:
+            current_v_output += step_size
+        else:
+            current_v_output -= step_size
+            
+        # Ensure the value stays within bounds
+        current_v_output = max(min_v_output, min(current_v_output, max_v_output))
+        
+        # Round to the nearest step size to prevent floating point errors
+        current_v_output = round(current_v_output / step_size) * step_size
+        
+        # Update the encoder position to match the current value
+        last_v_output_steps = current_steps
+        
+        print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
 # Function to toggle lock state
 def toggle_lock():
