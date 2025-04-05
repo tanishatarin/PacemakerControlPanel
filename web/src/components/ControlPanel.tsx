@@ -97,7 +97,7 @@ const ControlPanel: React.FC = () => {
     setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
   }, [autoLockTimer, encoderConnected]);
 
-  // Memoize the handleLeftArrowPress function
+  // Memoize the handleLeftArrowPress function, it clearly separate and log its different behaviors
   const handleLeftArrowPress = useCallback(() => {
     console.log("Left arrow press function called");
     resetAutoLockTimer();
@@ -109,6 +109,7 @@ const ControlPanel: React.FC = () => {
     
     // If we're in a settings screen, go back to the mode selection
     if (showDDDSettings || showVVISettings || showDOOSettings) {
+      console.log("LEFT ARROW: Exiting settings screen to mode selection");
       setShowDDDSettings(false);
       setShowVVISettings(false);
       setShowDOOSettings(false);
@@ -116,19 +117,23 @@ const ControlPanel: React.FC = () => {
     }
     
     // Otherwise, apply the selected mode and show appropriate settings
+    console.log("LEFT ARROW: Applying selected mode", modes[pendingModeIndex]);
     setSelectedModeIndex(pendingModeIndex);
     const newMode = modes[pendingModeIndex];
     
     // Check if mode requires special settings screen
     if (newMode === 'DDD') {
+      console.log("LEFT ARROW: Showing DDD settings");
       setShowDDDSettings(true);
       setShowVVISettings(false);
       setShowDOOSettings(false);
     } else if (newMode === 'VVI') {
+      console.log("LEFT ARROW: Showing VVI settings");
       setShowVVISettings(true);
       setShowDDDSettings(false);
       setShowDOOSettings(false);
     } else if (newMode === 'DOO') {
+      console.log("LEFT ARROW: Showing DOO settings");
       setShowDOOSettings(true);
       setShowDDDSettings(false);
       setShowVVISettings(false);
@@ -453,7 +458,11 @@ const ControlPanel: React.FC = () => {
     if (!leftButtonHandler.current) {
       leftButtonHandler.current = () => {
         console.log("LEFT BUTTON PRESSED - HANDLER ACTIVATED");
-        handleLeftArrowPress();
+        
+        // Force the component to re-render after handling
+        setTimeout(() => {
+          handleLeftArrowPress();
+        }, 10);
       };
     }
     
