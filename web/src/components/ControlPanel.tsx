@@ -72,11 +72,7 @@ const ControlPanel: React.FC = () => {
   
   // Get if controls should be locked (device locked or in DOO mode)
   const isControlsLocked = useCallback(() => {
-    // Force control lock in DOO mode regardless of lock state
-    if (modes[selectedModeIndex] === 'DOO') {
-      return true;
-    }
-    return isLocked;
+    return isLocked || modes[selectedModeIndex] === 'DOO';
   }, [isLocked, modes, selectedModeIndex]);
   
   // Show error when trying to adjust while locked
@@ -154,11 +150,6 @@ const ControlPanel: React.FC = () => {
     // Otherwise, apply the selected mode and show appropriate settings
     setSelectedModeIndex(pendingModeIndex);
     const newMode = modes[pendingModeIndex];
-    
-    // Update hardware with mode change if connected
-    if (encoderConnected) {
-      updateControls({ mode: pendingModeIndex });
-    }
     
     // Check if mode requires special settings screen
     if (newMode === 'DDD') {
@@ -269,15 +260,7 @@ const ControlPanel: React.FC = () => {
           return;
         }
         
-        // Update mode if it's set from hardware
-        if (data.mode !== undefined && data.mode >= 0 && data.mode < modes.length) {
-          if (data.mode !== selectedModeIndex) {
-            setSelectedModeIndex(data.mode);
-            setPendingModeIndex(data.mode);
-          }
-        }
-        
-        // Don't update control values if controls should be locked
+        // Don't update if controls should be locked
         if (isControlsLocked()) {
           return;
         }
@@ -457,9 +440,7 @@ const ControlPanel: React.FC = () => {
     
     // If connected to hardware, send emergency mode settings
     if (encoderConnected) {
-      // First set the mode to DOO, then set the parameters
       updateControls({
-        mode: dooIndex,
         rate: 80,
         a_output: 20.0,
         v_output: 25.0
