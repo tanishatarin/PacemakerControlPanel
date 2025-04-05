@@ -5,7 +5,12 @@ export interface ApiStatus {
   a_output?: number;
   v_output?: number;
   locked?: boolean;
-  emergency_active?: boolean;
+  buttons?: {
+    up_pressed?: boolean;
+    down_pressed?: boolean;
+    left_pressed?: boolean;
+    emergency_pressed?: boolean;
+  };
   hardware?: {
     rate_encoder?: {
       rotation_count?: number;
@@ -20,7 +25,7 @@ export interface ApiStatus {
       up_pressed?: boolean;
       down_pressed?: boolean;
       left_pressed?: boolean;
-      emergency_active?: boolean;
+      emergency_pressed?: boolean;
     };
   };
 }
@@ -30,7 +35,6 @@ export interface EncoderControlData {
   a_output?: number;
   v_output?: number;
   locked?: boolean;
-  emergency_active?: boolean;
   active_control?: string;
 }
 
@@ -174,45 +178,6 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
-// Activate emergency DOO mode
-export const activateEmergencyMode = async (): Promise<boolean> => {
-  try {
-    const response = await fetch(`${getBaseUrl()}/emergency/activate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }).then(handleApiError);
-    
-    const data = await response.json();
-    return data.success;
-  } catch (error) {
-    console.error('Error activating emergency mode:', error);
-    return false;
-  }
-};
-
-// Get current emergency mode status
-export const getEmergencyModeStatus = async (): Promise<boolean | null> => {
-  try {
-    const response = await fetch(`${getBaseUrl()}/emergency/status`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      return data.emergency_active;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error getting emergency mode status:', error);
-    return null;
-  }
-};
-
 // Start polling the encoder API
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
@@ -237,31 +202,30 @@ export const startEncoderPolling = (
           rate: status.rate,
           a_output: status.a_output,
           v_output: status.v_output,
-          locked: status.locked,
-          emergency_active: status.emergency_active
+          locked: status.locked
         };
         
         onDataUpdate(controlData);
         
         // Check for button presses
-        if (status.hardware?.buttons) {
+        if (status.buttons) {
           // Handle up button press
-          if (status.hardware.buttons.up_pressed) {
+          if (status.buttons.up_pressed) {
             window.dispatchEvent(new CustomEvent('hardware-up-button-pressed'));
           }
           
           // Handle down button press
-          if (status.hardware.buttons.down_pressed) {
+          if (status.buttons.down_pressed) {
             window.dispatchEvent(new CustomEvent('hardware-down-button-pressed'));
           }
           
           // Handle left button press
-          if (status.hardware.buttons.left_pressed) {
+          if (status.buttons.left_pressed) {
             window.dispatchEvent(new CustomEvent('hardware-left-button-pressed'));
           }
           
           // Handle emergency button press
-          if (status.hardware.buttons.emergency_active && !status.emergency_active) {
+          if (status.buttons.emergency_pressed) {
             window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
           }
         }
