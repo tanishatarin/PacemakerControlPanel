@@ -18,6 +18,7 @@ import {
   EncoderControlData
 } from '../utils/encoderApi';
 
+
 const ControlPanel: React.FC = () => {
   // Main control values
   const [rate, setRate] = useState(80);
@@ -65,11 +66,6 @@ const ControlPanel: React.FC = () => {
   // VVI Mode specific state
   const [vviSensitivity, setVviSensitivity] = useState(2.0);
   
-  // Button handler refs to maintain stable references
-  const upButtonHandler = useRef<((event: Event) => void) | null>(null);
-  const downButtonHandler = useRef<((event: Event) => void) | null>(null);
-  const leftButtonHandler = useRef<((event: Event) => void) | null>(null);
-  
   const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
@@ -88,6 +84,7 @@ const ControlPanel: React.FC = () => {
     
     const newTimer = setTimeout(() => {
       setIsLocked(true);
+      // Add these lines to update hardware lock state
       if (encoderConnected) {
         toggleLock().catch(err => console.error('Failed to toggle hardware lock state:', err));
       }
@@ -96,77 +93,7 @@ const ControlPanel: React.FC = () => {
     setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
   }, [autoLockTimer, encoderConnected]);
 
-  // Comprehensive left arrow press handler
-  const handleLeftArrowPress = useCallback(() => {
-    console.log("Left Arrow Press - Current State:", {
-      showDDDSettings,
-      showVVISettings,
-      showDOOSettings,
-      selectedModeIndex,
-      pendingModeIndex
-    });
-
-    resetAutoLockTimer();
-    
-    if (isLocked) {
-      handleLockError();
-      return;
-    }
-    
-    // If in any settings screen, return to mode selection
-    if (showDDDSettings || showVVISettings || showDOOSettings) {
-      console.log("Exiting settings screen to mode selection");
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
-      return;
-    }
-    
-    // If not in any settings screen, apply the pending mode
-    console.log(`Applying pending mode: ${modes[pendingModeIndex]}`);
-    setSelectedModeIndex(pendingModeIndex);
-    const newMode = modes[pendingModeIndex];
-    
-    // Show appropriate settings screen based on mode
-    switch(newMode) {
-      case 'DDD':
-        setShowDDDSettings(true);
-        setShowVVISettings(false);
-        setShowDOOSettings(false);
-        break;
-      case 'VVI':
-        setShowVVISettings(true);
-        setShowDDDSettings(false);
-        setShowDOOSettings(false);
-        break;
-      case 'DOO':
-        setShowDOOSettings(true);
-        setShowDDDSettings(false);
-        setShowVVISettings(false);
-        break;
-      default:
-        setShowDDDSettings(false);
-        setShowVVISettings(false);
-        setShowDOOSettings(false);
-    }
-    
-    // Clear async message if present
-    if (showAsyncMessage) {
-      setShowAsyncMessage(false);
-    }
-  }, [
-    isLocked, 
-    showDDDSettings, 
-    showVVISettings, 
-    showDOOSettings, 
-    pendingModeIndex, 
-    modes, 
-    showAsyncMessage, 
-    handleLockError, 
-    resetAutoLockTimer
-  ]);
-
-  // Handle mode navigation
+  // Handle mode navigation - memoized with useCallback
   const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
     resetAutoLockTimer();
     
@@ -192,6 +119,52 @@ const ControlPanel: React.FC = () => {
       setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
     }
   }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
+
+  // Memoize the handleLeftArrowPress function
+  const handleLeftArrowPress = useCallback(() => {
+    resetAutoLockTimer();
+    
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    // If we're in a settings screen, go back to the mode selection
+    if (showDDDSettings || showVVISettings || showDOOSettings) {
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+      return;
+    }
+    
+    // Otherwise, apply the selected mode and show appropriate settings
+    setSelectedModeIndex(pendingModeIndex);
+    const newMode = modes[pendingModeIndex];
+    
+    // Check if mode requires special settings screen
+    if (newMode === 'DDD') {
+      setShowDDDSettings(true);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'VVI') {
+      setShowVVISettings(true);
+      setShowDDDSettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'DOO') {
+      setShowDOOSettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+    } else {
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+    }
+    
+    // If exiting async message mode
+    if (showAsyncMessage) {
+      setShowAsyncMessage(false);
+    }
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
 
   // Check encoder connection on startup
   useEffect(() => {
@@ -230,7 +203,7 @@ const ControlPanel: React.FC = () => {
     const interval = setInterval(checkConnection, 5000);
     return () => clearInterval(interval);
   }, []);
-
+  
   // Handle local value changes and sync to hardware
   const handleLocalValueChange = async (key: string, value: number) => {
     if (isLocked) {
@@ -318,50 +291,7 @@ const ControlPanel: React.FC = () => {
     };
   }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked]);
 
-  // Set up hardware button listeners
-  useEffect(() => {
-    // Up button handler
-    if (!upButtonHandler.current) {
-      upButtonHandler.current = () => {
-        console.log("Hardware Up Button Pressed");
-        handleModeNavigation('up');
-      };
-    }
-    window.addEventListener('hardware-up-button-pressed', upButtonHandler.current);
-
-    // Down button handler  
-    if (!downButtonHandler.current) {
-      downButtonHandler.current = () => {
-        console.log("Hardware Down Button Pressed");
-        handleModeNavigation('down');
-      };
-    }
-    window.addEventListener('hardware-down-button-pressed', downButtonHandler.current);
-
-    // Left button handler
-    if (!leftButtonHandler.current) {
-      leftButtonHandler.current = () => {
-        console.log("Hardware Left Button Pressed");
-        handleLeftArrowPress();
-      };
-    }
-    window.addEventListener('hardware-left-button-pressed', leftButtonHandler.current);
-
-    // Cleanup function
-    return () => {
-      if (upButtonHandler.current) {
-        window.removeEventListener('hardware-up-button-pressed', upButtonHandler.current);
-      }
-      if (downButtonHandler.current) {
-        window.removeEventListener('hardware-down-button-pressed', downButtonHandler.current);
-      }
-      if (leftButtonHandler.current) {
-        window.removeEventListener('hardware-left-button-pressed', leftButtonHandler.current);
-      }
-    };
-  }, [handleModeNavigation, handleLeftArrowPress]);
-
-  // Pause button functionality
+  // Handle pause button functionality
   useEffect(() => {
     if (isPausing) {
       pauseTimerRef.current = window.setInterval(() => {
@@ -386,7 +316,16 @@ const ControlPanel: React.FC = () => {
     };
   }, [isPausing]);
 
-  // Automatic mode changes based on output settings
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoLockTimer) {
+        clearTimeout(autoLockTimer);
+      }
+    };
+  }, [autoLockTimer]);
+
+  // Handle automatic mode changes based on output settings
   useEffect(() => {
     // If in DDD mode and A Output is set to 0, switch to VVI
     if (modes[selectedModeIndex] === 'DDD' && aOutput === 0) {
@@ -409,7 +348,7 @@ const ControlPanel: React.FC = () => {
     }
   }, [aOutput, vOutput, selectedModeIndex, modes]);
 
-  // DDD Settings changes handler
+  // Handle DDD Settings changes
   const handleDDDSettingsChange = (key: string, value: any) => {
     if (isLocked) {
       handleLockError();
@@ -438,7 +377,7 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // VVI sensitivity change handler
+  // Handle VVI sensitivity change
   const handleVVISensitivityChange = (value: number) => {
     if (isLocked) {
       handleLockError();
@@ -455,7 +394,7 @@ const ControlPanel: React.FC = () => {
       
       updateControls({ 
         active_control: 'v_output',
-        v_output: value
+        v_output: value  // Might need adjustment depending on your implementation
       });
       
       // Allow hardware control again after a short delay
@@ -464,6 +403,54 @@ const ControlPanel: React.FC = () => {
       }, 500);
     }
   };
+
+  // Set up listener for hardware up button press
+  useEffect(() => {
+    const handleHardwareUpButtonPress = () => {
+      console.log("Hardware up button press detected");
+      handleModeNavigation('up');
+    };
+
+    // Add event listener for the custom event
+    window.addEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
+    };
+  }, [handleModeNavigation]);
+
+  // Set up listener for hardware down button press
+  useEffect(() => {
+    const handleHardwareDownButtonPress = () => {
+      console.log("Hardware down button press detected");
+      handleModeNavigation('down');
+    };
+
+    // Add event listener for the custom event
+    window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
+    };
+  }, [handleModeNavigation]);
+
+  // Set up listener for hardware left button press
+  useEffect(() => {
+    const handleHardwareLeftButtonPress = () => {
+      console.log("Hardware left button press detected");
+      handleLeftArrowPress();
+    };
+
+    // Add event listener for the custom event
+    window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
+    };
+  }, [handleLeftArrowPress]);
 
   // Add a dedicated hook to synchronize lock state from hardware to UI
   useEffect(() => {
@@ -580,7 +567,7 @@ const ControlPanel: React.FC = () => {
   const handlePauseEnd = () => {
     setIsPausing(false);
   };
-
+    
   // Render the appropriate mode panel
   const renderModePanel = () => {
     if (showDDDSettings) {
@@ -644,14 +631,14 @@ const ControlPanel: React.FC = () => {
         onBatteryChange={setBatteryLevel}
       />
 
-      {/* Encoder Connection Status */}
-      {encoderConnected && (
-        <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
-          Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
-            ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
-            : ''}
-        </div>
-      )}
+    {/* Encoder Connection Status */}
+    {encoderConnected && (
+      <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
+        Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
+          ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
+          : ''}
+      </div>
+    )}
 
       {/* Emergency Mode Button */}
       <button
@@ -665,7 +652,8 @@ const ControlPanel: React.FC = () => {
 
       {/* Main Controls */}
       <div className="bg-white rounded-3xl shadow-sm p-6 mb-6">
-        <HardwareRateControl
+        
+      <HardwareRateControl
           value={rate}
           onChange={setRate}
           isLocked={isLocked}

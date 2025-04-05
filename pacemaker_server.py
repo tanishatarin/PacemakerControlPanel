@@ -23,6 +23,10 @@ up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
 down_button = Button(14, bounce_time=0.05)  # Add down button on pin 14
 left_button = Button(8, bounce_time=0.05)  # Add left button on pin 8
 
+
+# Set up LED for lock indicator (use GPIO 18 as shown in your screenshot)
+# lock_led = LED(18)  # GPIO pin for the LED
+
 # Initial values
 rate_encoder.steps = 80
 current_rate = 80
@@ -35,14 +39,6 @@ current_v_output = 10.0
 
 # Lock state
 is_locked = False
-
-# Button states
-up_button_pressed = False
-down_button_pressed = False
-left_button_pressed = False
-last_up_press_time = 0
-last_down_press_time = 0
-last_left_press_time = 0
 
 # Min/max values
 min_rate = 30
@@ -58,16 +54,17 @@ max_v_output = 25.0
 last_a_output_steps = 100
 last_v_output_steps = 100
 
-# Button handlers
-def handle_up_button():
-    global last_up_press_time, up_button_pressed
-    current_time = time.time()
-    
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_up_press_time > 0.3:
-        last_up_press_time = current_time
-        up_button_pressed = True
-        print("Up button pressed")
+# up button state
+up_button_pressed = False
+last_up_press_time = 0
+
+# down button state
+down_button_pressed = False
+last_down_press_time = 0
+
+# left button state
+left_button_pressed = False
+last_left_press_time = 0
 
 def handle_down_button():
     global last_down_press_time, down_button_pressed
@@ -78,8 +75,19 @@ def handle_down_button():
         last_down_press_time = current_time
         down_button_pressed = True
         print("Down button pressed")
+
+
+def handle_up_button():
+    global last_up_press_time, up_button_pressed
+    current_time = time.time()
+    
+    # Debounce logic - only register a press if it's been at least 300ms since the last one
+    if current_time - last_up_press_time > 0.3:
+        last_up_press_time = current_time
+        up_button_pressed = True
+        print("Up button pressed")
         
-# Add more detailed logging in the left button handler
+        
 def handle_left_button():
     global last_left_press_time, left_button_pressed
     current_time = time.time()
@@ -88,8 +96,7 @@ def handle_left_button():
     if current_time - last_left_press_time > 0.3:
         last_left_press_time = current_time
         left_button_pressed = True
-        print("Left button pressed - DEBUG FLAG SET TO TRUE!")
-
+        print("Left button pressed")
 
 # Function to update the current rate value
 def update_rate():
@@ -188,16 +195,21 @@ def toggle_lock():
         # lock_led.off()  # Turn off LED when unlocked
         print("Device UNLOCKED")
 
-# Register event handlers
-lock_button.when_released = toggle_lock
+# Change the event binding - only toggle on release
+# This ensures a complete click cycle is required
+lock_button.when_released = toggle_lock  # Change from when_pressed to when_released
+
+# Attach event listeners
+rate_encoder.when_rotated = update_rate
+a_output_encoder.when_rotated = update_a_output
+v_output_encoder.when_rotated = update_v_output
+lock_button.when_pressed = toggle_lock
+
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
 
-# Attach encoder event listeners
-rate_encoder.when_rotated = update_rate
-a_output_encoder.when_rotated = update_a_output
-v_output_encoder.when_rotated = update_v_output
+
 
 # API endpoints for Lock status
 @app.route('/api/lock', methods=['GET'])
@@ -206,6 +218,19 @@ def get_lock():
         'locked': is_locked
     })
 
+# @app.route('/api/lock/toggle', methods=['POST'])
+# def set_lock():
+#     global is_locked
+#     is_locked = not is_locked
+    
+#     # Update LED based on lock state
+#     if is_locked:
+#         lock_led.on()
+#     else:
+#         lock_led.off()
+        
+#     print(f"Lock state toggled via API: {'Locked' if is_locked else 'Unlocked'}")
+#     return jsonify({'success': True, 'locked': is_locked})
 @app.route('/api/lock/toggle', methods=['POST'])
 def set_lock():
     toggle_lock()  # Use the same function to ensure consistent behavior
@@ -346,54 +371,40 @@ def reset_v_output():
     current_v_output = 10.0
     print("V. Output reset to 10.0 mA!")
 
-# Health check endpoint
+# health check endpoint
+@app.route('/api/health', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed
     
-    # Add debug logging
-    if left_button_pressed:
-        print("Health check reporting left button as pressed: TRUE")
-        
     # Create response data
     status_data = {
-    'status': 'ok',
-    'rate': current_rate,
-    'a_output': current_a_output,
-    'v_output': current_v_output,
-    'locked': is_locked,
-    'buttons': {
-        'up_pressed': up_button_pressed,
-        'down_pressed': down_button_pressed,
-        'left_pressed': left_button_pressed
+        'status': 'ok',
+        'rate': current_rate,
+        'a_output': current_a_output,
+        'v_output': current_v_output,
+        'locked': is_locked,
+        'buttons': {
+            'up_pressed': up_button_pressed,
+            'down_pressed': down_button_pressed,
+            'left_pressed': left_button_pressed
+        }
     }
-}
     
     # Reset button states
     was_up_pressed = up_button_pressed
     was_down_pressed = down_button_pressed
     was_left_pressed = left_button_pressed
-    
-    if was_up_pressed:
-        print("Reporting up button press via health check")
-    if was_down_pressed:
-        print("Reporting down button press via health check")
-    if was_left_pressed:
-        print("Reporting left button press via health check")
-    
-    # Reset buttons after checking
     up_button_pressed = False
     down_button_pressed = False
     left_button_pressed = False
-    
-    if was_left_pressed:
-        print("Reset left_button_pressed back to FALSE")
     
     return jsonify(status_data)
 
 # API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
 def get_hardware_info():
+    global up_button_pressed, down_button_pressed, left_button_pressed
     return jsonify({
         'status': 'ok',
         'hardware': {
@@ -405,11 +416,23 @@ def get_hardware_info():
             },
             'v_output_encoder': {
                 'rotation_count': v_output_encoder.steps
+            },
+            'buttons': {
+                'up_pressed': up_button_pressed,
+                'down_pressed': down_button_pressed,
+                'left_pressed': left_button_pressed
             }
         }
     })
 
+
 if __name__ == '__main__':
+    # Set initial LED state based on lock state
+    # if is_locked:
+    #     # lock_led.on()
+    # else:
+    #     # lock_led.off()
+        
     print("Pacemaker Server Started")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")

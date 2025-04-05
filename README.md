@@ -43,14 +43,14 @@ Clock 13, DT 6
 #### Buttons ?!?!
 
 Lock 17, LED 18 
- Up 26, LED 19 
- Down 14, LED 15
- Up 26
- Down 14
- Left / select 8, LED 7 
- DOO 23, LED 24 
- Power 5, LED 16 
- pause ??
+Up 26, LED 19 
+Down 14, LED 15
+Up 26
+Down 14
+Left / select 8, LED 7 
+DOO 23, LED 24 
+Power 5, LED 16 
+pause ??
 
 
 to ensure things work properly: 
