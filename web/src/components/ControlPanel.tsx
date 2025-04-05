@@ -70,6 +70,11 @@ const ControlPanel: React.FC = () => {
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
   
+  // Get if controls should be locked (device locked or in DOO mode)
+  const isControlsLocked = useCallback(() => {
+    return isLocked || modes[selectedModeIndex] === 'DOO';
+  }, [isLocked, modes, selectedModeIndex]);
+  
   // Show error when trying to adjust while locked
   const handleLockError = useCallback(() => {
     setShowLockMessage(true);
@@ -112,12 +117,6 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // If we're in DOO settings, go back to mode selection
-    if (showDOOSettings) {
-      setShowDOOSettings(false);
-      return;
-    }
-    
     // Otherwise handle regular mode navigation
     let newIndex;
     if (direction === 'up') {
@@ -127,40 +126,24 @@ const ControlPanel: React.FC = () => {
     }
     
     setPendingModeIndex(newIndex);
-    // Update the selected mode immediately to keep header in sync
-    setSelectedModeIndex(newIndex);
+    // Do NOT set selectedModeIndex here - only update the pending mode
     
-    // Show settings if needed for the selected mode
-    const newMode = modes[newIndex];
-    if (newMode === 'DDD') {
-      setShowDDDSettings(true);
-      setShowVVISettings(false);
-    } else if (newMode === 'VVI') {
-      setShowVVISettings(true);
-      setShowDDDSettings(false);
-    }
-    
-  }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
 
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
     
-    // Special case: When in DOO Settings, always allow going back regardless of lock state
-    if (showDOOSettings) {
+    // If we're in a settings screen, go back to the mode selection
+    if (showDDDSettings || showVVISettings || showDOOSettings) {
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
       setShowDOOSettings(false);
       return;
     }
     
     if (isLocked) {
       handleLockError();
-      return;
-    }
-    
-    // If we're in a settings screen, go back to the mode selection
-    if (showDDDSettings || showVVISettings) {
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
       return;
     }
     
@@ -172,9 +155,11 @@ const ControlPanel: React.FC = () => {
     if (newMode === 'DDD') {
       setShowDDDSettings(true);
       setShowVVISettings(false);
+      setShowDOOSettings(false);
     } else if (newMode === 'VVI') {
       setShowVVISettings(true);
       setShowDDDSettings(false);
+      setShowDOOSettings(false);
     } else if (newMode === 'DOO') {
       setShowDOOSettings(true);
       setShowDDDSettings(false);
@@ -231,7 +216,7 @@ const ControlPanel: React.FC = () => {
   
   // Handle local value changes and sync to hardware
   const handleLocalValueChange = async (key: string, value: number) => {
-    if (isLocked) {
+    if (isControlsLocked()) {
       handleLockError();
       return;
     }
@@ -275,6 +260,11 @@ const ControlPanel: React.FC = () => {
           return;
         }
         
+        // Don't update if controls should be locked
+        if (isControlsLocked()) {
+          return;
+        }
+        
         // Update local state from hardware
         if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
           setRate(data.rate);
@@ -314,7 +304,7 @@ const ControlPanel: React.FC = () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked]);
+  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
 
   // Handle pause button functionality
   useEffect(() => {
@@ -429,7 +419,7 @@ const ControlPanel: React.FC = () => {
     }
   };
 
-  // Activate emergency mode - don't check for lock 
+  // Activate emergency mode
   const handleEmergencyMode = useCallback(() => {
     resetAutoLockTimer();
     
@@ -592,7 +582,7 @@ const ControlPanel: React.FC = () => {
   const handlePauseStart = () => {
     resetAutoLockTimer();
     
-    if (isLocked) {
+    if (isControlsLocked()) {
       handleLockError();
       return;
     }
@@ -640,6 +630,13 @@ const ControlPanel: React.FC = () => {
           {modes.map((mode, index) => (
             <button
               key={mode}
+              onClick={() => {
+                if (!isLocked) {
+                  setPendingModeIndex(index);
+                } else {
+                  handleLockError();
+                }
+              }}
               className={`py-2.5 px-6 rounded-2xl text-sm font-medium transition-all
                 ${index === pendingModeIndex 
                   ? 'bg-blue-500 text-white' 
@@ -676,7 +673,7 @@ const ControlPanel: React.FC = () => {
       </div>
     )}
 
-      {/* Emergency Mode Button - always active */}
+      {/* Emergency Mode Button */}
       <button
         onClick={handleEmergencyMode}
         className="w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors"
@@ -689,22 +686,22 @@ const ControlPanel: React.FC = () => {
         
       <HardwareRateControl
           value={rate}
-          onChange={setRate}
-          isLocked={isLocked}
+          onChange={(value) => handleLocalValueChange('rate', value)}
+          isLocked={isControlsLocked()}
           onLockError={handleLockError}
         />
         
         <HardwareAOutputControl
           value={aOutput}
-          onChange={setAOutput}
-          isLocked={isLocked}
+          onChange={(value) => handleLocalValueChange('a_output', value)}
+          isLocked={isControlsLocked()}
           onLockError={handleLockError}
         />
         
         <HardwareVOutputControl
           value={vOutput}
-          onChange={setVOutput}
-          isLocked={isLocked}
+          onChange={(value) => handleLocalValueChange('v_output', value)}
+          isLocked={isControlsLocked()}
           onLockError={handleLockError}
         />
       </div>

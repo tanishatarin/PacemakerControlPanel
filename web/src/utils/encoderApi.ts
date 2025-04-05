@@ -5,6 +5,7 @@ export interface ApiStatus {
   a_output?: number;
   v_output?: number;
   locked?: boolean;
+  mode?: number;
   buttons?: {
     up_pressed?: boolean;
     down_pressed?: boolean;
@@ -35,6 +36,7 @@ export interface EncoderControlData {
   a_output?: number;
   v_output?: number;
   locked?: boolean;
+  mode?: number;
   active_control?: string;
 }
 
@@ -131,6 +133,16 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
         }).then(handleApiError)
       );
     }
+
+    if (data.mode !== undefined) {
+      promises.push(
+        fetch(`${getBaseUrl()}/mode/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: data.mode }),
+        }).then(handleApiError)
+      );
+    }
     
     await Promise.all(promises);
   } catch (error) {
@@ -202,7 +214,8 @@ export const startEncoderPolling = (
           rate: status.rate,
           a_output: status.a_output,
           v_output: status.v_output,
-          locked: status.locked
+          locked: status.locked,
+          mode: status.mode
         };
         
         onDataUpdate(controlData);
