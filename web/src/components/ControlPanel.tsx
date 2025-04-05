@@ -103,8 +103,7 @@ const ControlPanel: React.FC = () => {
       showVVISettings,
       showDOOSettings,
       selectedModeIndex,
-      pendingModeIndex,
-      currentMode: modes[selectedModeIndex]
+      pendingModeIndex
     });
 
     resetAutoLockTimer();
@@ -123,8 +122,33 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // If not in any settings screen, do NOT automatically reset to VOO
-    console.log(`Keeping current mode: ${modes[selectedModeIndex]}`);
+    // If not in any settings screen, apply the pending mode
+    console.log(`Applying pending mode: ${modes[pendingModeIndex]}`);
+    setSelectedModeIndex(pendingModeIndex);
+    const newMode = modes[pendingModeIndex];
+    
+    // Show appropriate settings screen based on mode
+    switch(newMode) {
+      case 'DDD':
+        setShowDDDSettings(true);
+        setShowVVISettings(false);
+        setShowDOOSettings(false);
+        break;
+      case 'VVI':
+        setShowVVISettings(true);
+        setShowDDDSettings(false);
+        setShowDOOSettings(false);
+        break;
+      case 'DOO':
+        setShowDOOSettings(true);
+        setShowDDDSettings(false);
+        setShowVVISettings(false);
+        break;
+      default:
+        setShowDDDSettings(false);
+        setShowVVISettings(false);
+        setShowDOOSettings(false);
+    }
     
     // Clear async message if present
     if (showAsyncMessage) {
@@ -135,8 +159,8 @@ const ControlPanel: React.FC = () => {
     showDDDSettings, 
     showVVISettings, 
     showDOOSettings, 
-    selectedModeIndex, 
-    modes, 
+    pendingModeIndex, 
+    modes,
     showAsyncMessage, 
     handleLockError, 
     resetAutoLockTimer
@@ -161,14 +185,38 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Otherwise handle regular mode navigation
-    if (direction === 'up') {
-      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
-    } else {
-      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
+    // If we're in VVI settings, just return
+    if (showVVISettings || showDOOSettings) {
+      return;
     }
-  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
-
+    
+    // Otherwise handle regular mode navigation
+    // Update both pending and selected mode indices
+    if (direction === 'up') {
+      const newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
+      setPendingModeIndex(newIndex);
+      setSelectedModeIndex(newIndex);
+      
+      console.log(`Mode navigated UP: ${modes[newIndex]}`);
+    } else {
+      const newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
+      setPendingModeIndex(newIndex);
+      setSelectedModeIndex(newIndex);
+      
+      console.log(`Mode navigated DOWN: ${modes[newIndex]}`);
+    }
+  }, [
+    isLocked, 
+    showDDDSettings, 
+    showVVISettings, 
+    showDOOSettings,
+    selectedDDDSetting, 
+    pendingModeIndex, 
+    modes.length, 
+    handleLockError, 
+    resetAutoLockTimer
+  ]);
+  
   // Check encoder connection on startup
   useEffect(() => {
     const checkConnection = async () => {
