@@ -40,6 +40,9 @@ Clock 21, DT 20
 #### V Output: 
 Clock 13, DT 6
 
+### mode scroll output:
+Clock 8, DT 7
+
 #### Buttons ?!?!
 
 Lock 17, LED 18 
@@ -48,7 +51,7 @@ Up 26
 
 Down 14
 
-Left 8
+Left 15
 
 DOO 23, LED 24 
 

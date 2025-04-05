@@ -15,13 +15,15 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 # Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
+mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
+
 # Set up the Lock Button (from the screenshot, using GPIO 17)
 lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
 
 # Set up the Up & down Button  (using GPIO 26, 14)
 up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
 down_button = Button(14, bounce_time=0.05)  # Add down button on pin 14
-left_button = Button(8, bounce_time=0.05)  # Add left button on pin 8
+left_button = Button(15, bounce_time=0.05)  # Add left button on pin 8
 
 # Set up the Emergency DOO button (pin 23)
 emergency_button = Button(23, bounce_time=0.05)  # Add emergency button on pin 23
