@@ -295,12 +295,37 @@ const ControlPanel: React.FC = () => {
   }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked]);
 
   // Set up hardware button listeners
+  // Set up hardware button listeners
   useEffect(() => {
     // Up button handler
     if (!upButtonHandler.current) {
       upButtonHandler.current = () => {
         console.log("Hardware Up Button Pressed");
-        handleModeNavigation('up');
+        
+        // If locked, do nothing
+        if (isLocked) {
+          handleLockError();
+          return;
+        }
+        
+        // If in DDD settings, handle settings navigation
+        if (showDDDSettings) {
+          if (selectedDDDSetting === 'vSensitivity') {
+            setSelectedDDDSetting('aSensitivity');
+          }
+          return;
+        }
+        
+        // If in settings screens, do nothing
+        if (showVVISettings || showDOOSettings) {
+          return;
+        }
+        
+        // Update mode indices
+        setPendingModeIndex(prev => prev === 0 ? modes.length - 1 : prev - 1);
+        setSelectedModeIndex(prev => prev === 0 ? modes.length - 1 : prev - 1);
+        
+        console.log(`Mode navigated UP: ${modes[selectedModeIndex === 0 ? modes.length - 1 : selectedModeIndex - 1]}`);
       };
     }
     window.addEventListener('hardware-up-button-pressed', upButtonHandler.current);
@@ -309,19 +334,34 @@ const ControlPanel: React.FC = () => {
     if (!downButtonHandler.current) {
       downButtonHandler.current = () => {
         console.log("Hardware Down Button Pressed");
-        handleModeNavigation('down');
+        
+        // If locked, do nothing
+        if (isLocked) {
+          handleLockError();
+          return;
+        }
+        
+        // If in DDD settings, handle settings navigation
+        if (showDDDSettings) {
+          if (selectedDDDSetting === 'aSensitivity') {
+            setSelectedDDDSetting('vSensitivity');
+          }
+          return;
+        }
+        
+        // If in settings screens, do nothing
+        if (showVVISettings || showDOOSettings) {
+          return;
+        }
+        
+        // Update mode indices
+        setPendingModeIndex(prev => prev === modes.length - 1 ? 0 : prev + 1);
+        setSelectedModeIndex(prev => prev === modes.length - 1 ? 0 : prev + 1);
+        
+        console.log(`Mode navigated DOWN: ${modes[selectedModeIndex === modes.length - 1 ? 0 : selectedModeIndex + 1]}`);
       };
     }
     window.addEventListener('hardware-down-button-pressed', downButtonHandler.current);
-
-    // Left button handler
-    if (!leftButtonHandler.current) {
-      leftButtonHandler.current = () => {
-        console.log("Hardware Left Button Pressed");
-        handleLeftArrowPress();
-      };
-    }
-    window.addEventListener('hardware-left-button-pressed', leftButtonHandler.current);
 
     // Cleanup function
     return () => {
@@ -331,11 +371,17 @@ const ControlPanel: React.FC = () => {
       if (downButtonHandler.current) {
         window.removeEventListener('hardware-down-button-pressed', downButtonHandler.current);
       }
-      if (leftButtonHandler.current) {
-        window.removeEventListener('hardware-left-button-pressed', leftButtonHandler.current);
-      }
     };
-  }, [handleModeNavigation, handleLeftArrowPress]);
+  }, [
+    isLocked, 
+    handleLockError, 
+    modes, 
+    selectedModeIndex, 
+    showDDDSettings, 
+    showVVISettings, 
+    showDOOSettings,
+    selectedDDDSetting
+  ]);
 
   // Pause button functionality
   useEffect(() => {
