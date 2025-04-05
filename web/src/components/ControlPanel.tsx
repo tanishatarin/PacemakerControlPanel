@@ -160,7 +160,7 @@ const ControlPanel: React.FC = () => {
     showVVISettings, 
     showDOOSettings, 
     pendingModeIndex, 
-    modes,
+    modes, 
     showAsyncMessage, 
     handleLockError, 
     resetAutoLockTimer
@@ -185,38 +185,14 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // If we're in VVI settings, just return
-    if (showVVISettings || showDOOSettings) {
-      return;
-    }
-    
     // Otherwise handle regular mode navigation
-    // Update both pending and selected mode indices
     if (direction === 'up') {
-      const newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
-      setPendingModeIndex(newIndex);
-      setSelectedModeIndex(newIndex);
-      
-      console.log(`Mode navigated UP: ${modes[newIndex]}`);
+      setPendingModeIndex(prev => (prev === 0 ? modes.length - 1 : prev - 1));
     } else {
-      const newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
-      setPendingModeIndex(newIndex);
-      setSelectedModeIndex(newIndex);
-      
-      console.log(`Mode navigated DOWN: ${modes[newIndex]}`);
+      setPendingModeIndex(prev => (prev === modes.length - 1 ? 0 : prev + 1));
     }
-  }, [
-    isLocked, 
-    showDDDSettings, 
-    showVVISettings, 
-    showDOOSettings,
-    selectedDDDSetting, 
-    pendingModeIndex, 
-    modes.length, 
-    handleLockError, 
-    resetAutoLockTimer
-  ]);
-  
+  }, [isLocked, showDDDSettings, selectedDDDSetting, modes.length, handleLockError, resetAutoLockTimer]);
+
   // Check encoder connection on startup
   useEffect(() => {
     const checkConnection = async () => {
