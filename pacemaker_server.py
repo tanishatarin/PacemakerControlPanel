@@ -298,6 +298,8 @@ def set_lock():
 # API endpoints for Rate
 @app.route('/api/rate', methods=['GET'])
 def get_rate():
+    global current_rate
+    
     # If in DOO mode, ensure rate is at emergency value
     if is_in_doo_mode():
         current_rate = DOO_RATE
@@ -332,6 +334,8 @@ def set_rate():
 
 @app.route('/api/rate/reset', methods=['POST'])
 def api_reset_rate():
+    global current_rate
+    
     # Check if in DOO mode - reject any changes
     if is_in_doo_mode():
         return jsonify({'error': 'Device is in DOO mode, rate is fixed at 80ppm'}), 403
@@ -353,6 +357,8 @@ def reset_rate():
 # API endpoints for A. Output
 @app.route('/api/a_output', methods=['GET'])
 def get_a_output():
+    global current_a_output
+    
     # If in DOO mode, ensure a_output is at emergency value
     if is_in_doo_mode():
         current_a_output = DOO_A_OUTPUT
@@ -392,6 +398,8 @@ def set_a_output():
 
 @app.route('/api/a_output/reset', methods=['POST'])
 def api_reset_a_output():
+    global current_a_output
+    
     # Check if in DOO mode - reject any changes
     if is_in_doo_mode():
         return jsonify({'error': 'Device is in DOO mode, A Output is fixed at 20.0mA'}), 403
@@ -414,6 +422,8 @@ def reset_a_output():
 # API endpoints for V. Output
 @app.route('/api/v_output', methods=['GET'])
 def get_v_output():
+    global current_v_output
+    
     # If in DOO mode, ensure v_output is at emergency value
     if is_in_doo_mode():
         current_v_output = DOO_V_OUTPUT
@@ -453,6 +463,8 @@ def set_v_output():
 
 @app.route('/api/v_output/reset', methods=['POST'])
 def api_reset_v_output():
+    global current_v_output
+    
     # Check if in DOO mode - reject any changes
     if is_in_doo_mode():
         return jsonify({'error': 'Device is in DOO mode, V Output is fixed at 25.0mA'}), 403
@@ -511,6 +523,7 @@ def api_set_doo_emergency():
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
+    global current_rate, current_a_output, current_v_output
     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
     
     # If in DOO mode, ensure values are at emergency levels
