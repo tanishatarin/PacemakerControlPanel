@@ -759,4 +759,4 @@ if __name__ == '__main__':
         logger.error(f"Error during server operation: {e}")
     finally:
         cleanup()
-        logger.info("Server shutdown complete").0
+        logger.info("Server shutdown complete")
