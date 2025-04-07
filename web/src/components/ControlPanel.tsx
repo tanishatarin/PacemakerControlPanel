@@ -115,9 +115,56 @@ const ControlPanel: React.FC = () => {
     }
   }, [encoderConnected, modes]);
 
+  // // Handle mode navigation - memoized with useCallback
+  // const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
+  //   resetAutoLockTimer();
+    
+  //   // If we're in DDD settings, handle navigation within those settings
+  //   if (showDDDSettings) {
+  //     if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
+  //       setSelectedDDDSetting('aSensitivity');
+  //     } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
+  //       setSelectedDDDSetting('vSensitivity');
+  //     }
+  //     return;
+  //   }
+    
+  //   // In DOO settings, allow navigation to change modes even if in DOO mode
+  //   if (showDOOSettings) {
+  //     // Allow navigating out of DOO mode
+  //     let newIndex;
+  //     if (direction === 'up') {
+  //       newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
+  //     } else {
+  //       newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
+  //     }
+      
+  //     setPendingModeIndex(newIndex);
+  //     return;
+  //   }
+    
+  //   // If locked but not in DOO settings, block navigation
+  //   if (isLocked && !showDOOSettings) {
+  //     handleLockError();
+  //     return;
+  //   }
+    
+  //   // Otherwise handle regular mode navigation
+  //   let newIndex;
+  //   if (direction === 'up') {
+  //     newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
+  //   } else {
+  //     newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
+  //   }
+    
+  //   setPendingModeIndex(newIndex);
+  // }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
+
   // Handle mode navigation - memoized with useCallback
   const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
     resetAutoLockTimer();
+    
+    // Always allow navigation in DOO mode
     
     // If we're in DDD settings, handle navigation within those settings
     if (showDDDSettings) {
@@ -129,27 +176,13 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // In DOO settings, allow navigation to change modes even if in DOO mode
-    if (showDOOSettings) {
-      // Allow navigating out of DOO mode
-      let newIndex;
-      if (direction === 'up') {
-        newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
-      } else {
-        newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
-      }
-      
-      setPendingModeIndex(newIndex);
-      return;
-    }
-    
-    // If locked but not in DOO settings, block navigation
-    if (isLocked && !showDOOSettings) {
+    // If we're not in DOO mode AND we're locked, show error
+    if (isLocked && !isInDOOMode()) {
       handleLockError();
       return;
     }
     
-    // Otherwise handle regular mode navigation
+    // Otherwise handle regular mode navigation - DOO mode can still navigate
     let newIndex;
     if (direction === 'up') {
       newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
@@ -158,7 +191,7 @@ const ControlPanel: React.FC = () => {
     }
     
     setPendingModeIndex(newIndex);
-  }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer, isInDOOMode]);
 
   // Apply DOO emergency mode values
   const applyDOOEmergencyValues = useCallback(() => {
@@ -196,16 +229,29 @@ const ControlPanel: React.FC = () => {
     return false; // Not handled here
   }, [showDOOSettings, switchToDDDMode]);
 
-  // Memoize the handleLeftArrowPress function
+  // Handle left arrow press
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
-    
-    // Special handling for exiting DOO mode
-    if (handleDOOExitNavigation()) {
+
+    // If we're in DOO settings, exit to main mode panel and set mode to DDD
+    if (showDOOSettings) {
+      // Exit DOO settings
+      setShowDOOSettings(false);
+      
+      // Switch to DDD mode
+      const dddIndex = modes.indexOf('DDD');
+      setSelectedModeIndex(dddIndex);
+      setPendingModeIndex(dddIndex);
+      
+      // Send DDD mode to hardware
+      if (encoderConnected) {
+        updateControls({ mode: dddIndex });
+      }
+      
       return;
     }
     
-    // If we're in a settings screen, go back to the mode selection
+    // If we're in any other settings screen, go back to mode selection
     if (showDDDSettings || showVVISettings) {
       setShowDDDSettings(false);
       setShowVVISettings(false);
@@ -217,39 +263,39 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Otherwise, apply the selected mode and show appropriate settings
+    // Apply the selected mode
     const newMode = modes[pendingModeIndex];
     setSelectedModeIndex(pendingModeIndex);
     
     // If switching to DOO mode, apply emergency values
     if (newMode === 'DOO') {
-      applyDOOEmergencyValues();
-    }
-    
-    // Check if mode requires special settings screen
-    if (newMode === 'DDD') {
+      // Apply emergency values
+      setRate(80);
+      setAOutput(20.0);
+      setVOutput(25.0);
+      
+      // Send to hardware
+      if (encoderConnected) {
+        updateControls({
+          rate: 80,
+          a_output: 20.0,
+          v_output: 25.0,
+          mode: pendingModeIndex
+        });
+      }
+      
+      // Show DOO settings
+      setShowDOOSettings(true);
+    } else if (newMode === 'DDD') {
       setShowDDDSettings(true);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
     } else if (newMode === 'VVI') {
       setShowVVISettings(true);
-      setShowDDDSettings(false);
-      setShowDOOSettings(false);
-    } else if (newMode === 'DOO') {
-      setShowDOOSettings(true);
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-    } else {
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
     }
     
-    // If exiting async message mode
     if (showAsyncMessage) {
       setShowAsyncMessage(false);
     }
-  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer, applyDOOEmergencyValues, handleDOOExitNavigation]);
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer, encoderConnected]);
 
   // Check encoder connection on startup
   useEffect(() => {

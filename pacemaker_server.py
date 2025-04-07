@@ -83,17 +83,6 @@ last_emergency_press_time = 0
 # DOO mode UI state tracker
 in_doo_settings = False
 
-def handle_down_button():
-    global last_down_press_time, down_button_pressed
-    current_time = time.time()
-    
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_down_press_time > 0.3:
-        last_down_press_time = current_time
-        down_button_pressed = True
-        print("Down button pressed")
-
-
 def handle_up_button():
     global last_up_press_time, up_button_pressed
     current_time = time.time()
@@ -104,9 +93,18 @@ def handle_up_button():
         up_button_pressed = True
         print("Up button pressed")
         
-        
+def handle_down_button():
+    global last_down_press_time, down_button_pressed
+    current_time = time.time()
+    
+    # Debounce logic - only register a press if it's been at least 300ms since the last one
+    if current_time - last_down_press_time > 0.3:
+        last_down_press_time = current_time
+        down_button_pressed = True
+        print("Down button pressed")
+          
 def handle_left_button():
-    global last_left_press_time, left_button_pressed, in_doo_settings, current_mode
+    global last_left_press_time, left_button_pressed, current_mode
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
@@ -115,13 +113,11 @@ def handle_left_button():
         left_button_pressed = True
         print("Left button pressed")
         
-        # If in DOO settings, transition to DDD mode on left press
-        if in_doo_settings and current_mode == DOO_MODE_INDEX:
+        # If in DOO mode, transition to DDD mode on left press
+        if current_mode == DOO_MODE_INDEX:
             current_mode = DDD_MODE_INDEX
-            in_doo_settings = False
             print("Exiting DOO mode, switching to DDD mode")
-
-
+            
 def handle_emergency_button():
     global last_emergency_press_time, emergency_button_pressed, current_mode, in_doo_settings
     current_time = time.time()
