@@ -72,7 +72,18 @@ const ControlPanel: React.FC = () => {
   
   // Get if controls should be locked (device locked or in DOO mode)
   const isControlsLocked = useCallback(() => {
-    return isLocked || modes[selectedModeIndex] === 'DOO';
+    const currentMode = modes[selectedModeIndex];
+    const isDOOMode = currentMode === 'DOO';
+    
+    // Store this in a variable for debugging
+    const lockStatus = isLocked || isDOOMode;
+    
+    // Log for debugging
+    if (isDOOMode) {
+      console.log("Controls locked due to DOO mode");
+    }
+    
+    return lockStatus;
   }, [isLocked, modes, selectedModeIndex]);
   
   // Show error when trying to adjust while locked
@@ -153,6 +164,33 @@ const ControlPanel: React.FC = () => {
         const dddIndex = modes.indexOf('DDD');
         setSelectedModeIndex(dddIndex);
         setPendingModeIndex(dddIndex);
+        
+        // Force a complete update of all controls to ensure hardware and UI are in sync
+        if (encoderConnected) {
+          // First, update the mode to DDD
+          console.log("Switching from DOO to DDD mode");
+          
+          // Force a complete refresh of all control values
+          const forceRefreshControls = async () => {
+            try {
+              // Send a complete update with all values to ensure hardware state is reset
+              await updateControls({
+                mode: dddIndex,
+                rate: rate,
+                a_output: aOutput,
+                v_output: vOutput
+              });
+              console.log("All controls refreshed after DOO->DDD transition");
+            } catch (error) {
+              console.error("Error refreshing controls:", error);
+            }
+          };
+          
+          forceRefreshControls();
+        }
+        
+        // Re-enable controls by breaking out of DOO emergency mode
+        setLocalControlActive(false);
       }
       
       setShowDDDSettings(false);
@@ -195,7 +233,7 @@ const ControlPanel: React.FC = () => {
     }
   }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, selectedModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
 
-  // Check encoder connection on startup
+  // Check encoder connection on startup and reconnect if lost
   useEffect(() => {
     const checkConnection = async () => {
       try {
@@ -217,8 +255,13 @@ const ControlPanel: React.FC = () => {
 
           console.log('Connected to encoder API:', status);
         } else {
+          // If we've lost connection, log it
+          if (encoderConnected) {
+            console.warn('Lost connection to encoder API, will retry');
+          } else {
+            console.log('Could not connect to encoder API, will retry');
+          }
           setEncoderConnected(false);
-          console.log('Could not connect to encoder API');
         }
       } catch (e) {
         console.error('Error in connection check:', e);
@@ -226,16 +269,27 @@ const ControlPanel: React.FC = () => {
       }
     };
     
+    // Check immediately
     checkConnection();
     
-    // Also check periodically
-    const interval = setInterval(checkConnection, 5000);
+    // Check more frequently (every 2 seconds) to detect and recover from connection loss quickly
+    const interval = setInterval(checkConnection, 2000);
     return () => clearInterval(interval);
   }, []);
   
   // Handle local value changes and sync to hardware
   const handleLocalValueChange = async (key: string, value: number) => {
-    if (isControlsLocked()) {
+    // Check if we're in DOO mode - if we just switched away from DOO, allow control
+    const isDOOMode = modes[selectedModeIndex] === 'DOO';
+    const isLockedControls = isLocked || isDOOMode;
+    
+    // For debugging
+    if (isDOOMode) {
+      console.log("In DOO mode - controls should be locked");
+    }
+    
+    // If we're locked, show error and return
+    if (isLockedControls) {
       handleLockError();
       return;
     }
@@ -280,7 +334,20 @@ const ControlPanel: React.FC = () => {
         }
         
         // Don't update if controls should be locked
+        // BUT allow hardware mode data to update our UI mode
         if (isControlsLocked()) {
+          // Only process lock state changes and mode changes when locked
+          if (data.locked !== undefined && data.locked !== isLocked) {
+            setIsLocked(data.locked);
+          }
+          
+          if (data.mode !== undefined && data.mode !== selectedModeIndex) {
+            // If hardware says we've changed mode, update our UI
+            setSelectedModeIndex(data.mode);
+            setPendingModeIndex(data.mode);
+            console.log(`Mode updated from hardware: ${modes[data.mode]}`);
+          }
+          
           return;
         }
         
@@ -297,7 +364,7 @@ const ControlPanel: React.FC = () => {
           setVOutput(data.v_output);
         }
 
-        // handles lock state changes
+        // Handle lock state changes
         if (data.locked !== undefined && data.locked !== isLocked) {
           setIsLocked(data.locked);
           if (data.locked) {
@@ -307,6 +374,13 @@ const ControlPanel: React.FC = () => {
               setAutoLockTimer(null);
             }
           }
+        }
+        
+        // Handle mode changes
+        if (data.mode !== undefined && data.mode !== selectedModeIndex) {
+          setSelectedModeIndex(data.mode);
+          setPendingModeIndex(data.mode);
+          console.log(`Mode updated from hardware: ${modes[data.mode]}`);
         }
       },
       // Status callback
@@ -366,6 +440,12 @@ const ControlPanel: React.FC = () => {
       const vviIndex = modes.indexOf('VVI');
       setSelectedModeIndex(vviIndex);
       setPendingModeIndex(vviIndex);
+      
+      // Update hardware mode as well
+      if (encoderConnected) {
+        updateControls({ mode: vviIndex });
+      }
+      
       // Show notification
       setShowAsyncMessage(true);
       setTimeout(() => setShowAsyncMessage(false), 3000);
@@ -376,11 +456,17 @@ const ControlPanel: React.FC = () => {
       const aaiIndex = modes.indexOf('AAI');
       setSelectedModeIndex(aaiIndex);
       setPendingModeIndex(aaiIndex);
+      
+      // Update hardware mode as well
+      if (encoderConnected) {
+        updateControls({ mode: aaiIndex });
+      }
+      
       // Show notification
       setShowAsyncMessage(true);
       setTimeout(() => setShowAsyncMessage(false), 3000);
     }
-  }, [aOutput, vOutput, selectedModeIndex, modes]);
+  }, [aOutput, vOutput, selectedModeIndex, modes, encoderConnected]);
 
   // Handle DDD Settings changes
   const handleDDDSettingsChange = (key: string, value: any) => {
@@ -732,6 +818,12 @@ const ControlPanel: React.FC = () => {
           isLocked={isControlsLocked()}
           onLockError={handleLockError}
         />
+        
+        {/* Debug info for mode/lock state (hidden in production) */}
+        <div className="mt-4 text-xs text-gray-400">
+          Mode: {modes[selectedModeIndex]} (Index: {selectedModeIndex}) 
+          {isControlsLocked() ? " - Controls Locked" : " - Controls Unlocked"}
+        </div>
       </div>
 
       {/* Mode Selection and Control Buttons */}

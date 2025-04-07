@@ -46,9 +46,32 @@ const apiBaseUrl = 'http://raspberrypi.local:5000/api';
 // Fallback to localhost if raspberrypi.local is not available
 let useLocalhost = false;
 
+// Keep track of API health
+let lastSuccessfulHealthCheck = 0;
+let consecutiveFailures = 0;
+const MAX_FAILURES = 3;
+
 // Function to get the appropriate base URL
 const getBaseUrl = () => {
   return useLocalhost ? 'http://localhost:5000/api' : apiBaseUrl;
+};
+
+// Add timeout to fetch requests
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout = 3000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
 };
 
 // Utility function to handle API errors
@@ -68,7 +91,8 @@ const handleApiError = async (response: Response) => {
 // Check encoder API status
 export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/health`, {
+    // First try raspberrypi.local
+    const response = await fetchWithTimeout(`${getBaseUrl()}/health`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -76,26 +100,46 @@ export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
     });
     
     if (response.ok) {
-      return await response.json();
+      const data = await response.json();
+      lastSuccessfulHealthCheck = Date.now();
+      consecutiveFailures = 0;
+      return data;
     }
     
-    // If raspberrypi.local fails, try localhost
+    consecutiveFailures++;
+    
+    // If raspberrypi.local fails and we haven't tried localhost yet, try that
     if (!useLocalhost) {
+      console.log("Trying localhost fallback...");
       useLocalhost = true;
       return checkEncoderStatus();
     }
     
+    // If both fail, log the error and return null
+    console.error(`API health check failed with status ${response.status}`);
     return null;
   } catch (error) {
     console.error('Error checking encoder status:', error);
+    consecutiveFailures++;
     
-    // If raspberrypi.local fails, try localhost
+    // If raspberrypi.local fails and we haven't tried localhost yet, try that
     if (!useLocalhost) {
+      console.log("Trying localhost fallback after error...");
       useLocalhost = true;
       return checkEncoderStatus();
     }
     
+    // If both fail, log the error and return null
+    if (error instanceof Error) {
+      console.error(`API connection error: ${error.message}`);
+    }
     return null;
+  } finally {
+    // Switch back to raspberrypi.local periodically to try reconnecting
+    if (useLocalhost && consecutiveFailures > MAX_FAILURES) {
+      useLocalhost = false;
+      console.log("Switching back to raspberrypi.local after multiple localhost failures");
+    }
   }
 };
 
@@ -104,9 +148,20 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
   try {
     const promises = [];
     
+    // Check if we've lost connection
+    if (Date.now() - lastSuccessfulHealthCheck > 5000 && consecutiveFailures > MAX_FAILURES) {
+      // Try to reconnect first
+      await checkEncoderStatus();
+      
+      // If we're still failing, throw an error
+      if (consecutiveFailures > MAX_FAILURES) {
+        throw new Error("Unable to update controls - connection to hardware lost");
+      }
+    }
+    
     if (data.rate !== undefined) {
       promises.push(
-        fetch(`${getBaseUrl()}/rate/set`, {
+        fetchWithTimeout(`${getBaseUrl()}/rate/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value: data.rate }),
@@ -116,7 +171,7 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
     
     if (data.a_output !== undefined) {
       promises.push(
-        fetch(`${getBaseUrl()}/a_output/set`, {
+        fetchWithTimeout(`${getBaseUrl()}/a_output/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value: data.a_output }),
@@ -126,7 +181,7 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
     
     if (data.v_output !== undefined) {
       promises.push(
-        fetch(`${getBaseUrl()}/v_output/set`, {
+        fetchWithTimeout(`${getBaseUrl()}/v_output/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value: data.v_output }),
@@ -136,7 +191,7 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
 
     if (data.mode !== undefined) {
       promises.push(
-        fetch(`${getBaseUrl()}/mode/set`, {
+        fetchWithTimeout(`${getBaseUrl()}/mode/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: data.mode }),
@@ -147,6 +202,7 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
     await Promise.all(promises);
   } catch (error) {
     console.error('Error updating controls:', error);
+    consecutiveFailures++;
     throw error;
   }
 };
@@ -154,7 +210,7 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
 // Toggle the lock state
 export const toggleLock = async (): Promise<boolean | null> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/lock/toggle`, {
+    const response = await fetchWithTimeout(`${getBaseUrl()}/lock/toggle`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -165,6 +221,7 @@ export const toggleLock = async (): Promise<boolean | null> => {
     return data.locked;
   } catch (error) {
     console.error('Error toggling lock:', error);
+    consecutiveFailures++;
     return null;
   }
 };
@@ -172,7 +229,7 @@ export const toggleLock = async (): Promise<boolean | null> => {
 // Get the current lock state
 export const getLockState = async (): Promise<boolean | null> => {
   try {
-    const response = await fetch(`${getBaseUrl()}/lock`, {
+    const response = await fetchWithTimeout(`${getBaseUrl()}/lock`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -186,11 +243,12 @@ export const getLockState = async (): Promise<boolean | null> => {
     return null;
   } catch (error) {
     console.error('Error getting lock state:', error);
+    consecutiveFailures++;
     return null;
   }
 };
 
-// Start polling the encoder API
+// Start polling the encoder API with error recovery
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
@@ -198,6 +256,32 @@ export const startEncoderPolling = (
   ignoreUpdateSources: string[] = []
 ) => {
   let isPolling = true;
+  let failedPolls = 0;
+  const MAX_FAILED_POLLS = 5;
+  
+  // Set up error recovery
+  const recoverConnection = async () => {
+    console.warn(`Attempting to recover connection after ${failedPolls} failed polls`);
+    
+    // Try to reconnect
+    try {
+      // First, reset useLocalhost to try raspberrypi.local again
+      useLocalhost = false;
+      
+      const status = await checkEncoderStatus();
+      if (status) {
+        console.log('Successfully recovered connection to encoder API');
+        failedPolls = 0;
+        return true;
+      } else {
+        console.error('Failed to recover connection, will retry');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error during connection recovery:', error);
+      return false;
+    }
+  };
   
   const pollHealth = async () => {
     if (!isPolling) return;
@@ -208,6 +292,7 @@ export const startEncoderPolling = (
       if (status) {
         // Update status data
         onStatusUpdate(status);
+        failedPolls = 0;
         
         // Extract control values and pass to data update handler
         const controlData: EncoderControlData = {
@@ -242,12 +327,33 @@ export const startEncoderPolling = (
             window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
           }
         }
+      } else {
+        failedPolls++;
+        console.warn(`Failed health poll #${failedPolls}`);
+        
+        // If we've failed too many times in a row, try to recover
+        if (failedPolls >= MAX_FAILED_POLLS) {
+          await recoverConnection();
+        }
       }
     } catch (error) {
+      failedPolls++;
       console.error('Polling error:', error);
+      
+      // If we've failed too many times in a row, try to recover
+      if (failedPolls >= MAX_FAILED_POLLS) {
+        await recoverConnection();
+      }
     } finally {
       if (isPolling) {
-        setTimeout(pollHealth, pollInterval);
+        // Use a dynamic polling interval based on connection state
+        // Poll more frequently when everything is working well,
+        // and back off when having connection issues
+        const dynamicInterval = failedPolls > 0 
+          ? Math.min(pollInterval * (1 + failedPolls), 2000) // Back off up to 2 seconds
+          : pollInterval;
+          
+        setTimeout(pollHealth, dynamicInterval);
       }
     }
   };
