@@ -327,7 +327,7 @@ def get_sensitivity_step_size(value, is_a_sensitivity=True):
 
 # Function to update the current Mode Output value (for sensitivity controls)
 def update_mode_output():
-    global a_sensitivity, v_sensitivity, last_mode_output_steps, active_control
+    global a_sensitivity, v_sensitivity, last_mode_output_steps, active_control, current_mode_output
     
     with encoder_lock:
         # Skip updating if locked or in DOO mode or if no control is active
@@ -336,14 +336,14 @@ def update_mode_output():
         
         # Get current steps from encoder
         current_steps = mode_output_encoder.steps
+        current_mode_output = current_steps  # Update the current mode output value
         
         # Calculate the difference in steps
         diff = current_steps - last_mode_output_steps
         
         # If there's a change in steps
         if diff != 0:
-            # Update the last steps first to prevent multiple updates
-            last_mode_output_steps = current_steps
+            logger.info(f"Mode encoder rotated: steps={current_steps}, last_steps={last_mode_output_steps}, diff={diff}")
             
             # Handle A Sensitivity adjustment
             if active_control == 'a_sensitivity':
@@ -400,7 +400,11 @@ def update_mode_output():
                     v_sensitivity = min_v_sensitivity  # Set to minimum sensitivity
                 
                 logger.info(f"V Sensitivity updated: {v_sensitivity} mV (step size: {step_size}, diff: {diff})")
-
+            
+            # Update the last steps value AFTER all processing is complete
+            # This is crucial for continuous operation
+            last_mode_output_steps = current_steps
+            
 # Function to toggle lock state
 def toggle_lock():
     global is_locked
