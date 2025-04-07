@@ -54,11 +54,14 @@ max_a_output = 20.0
 min_v_output = 0.0
 max_v_output = 25.0
 
+# Mode indices
+DOO_MODE_INDEX = 5  # Index 5 corresponds to 'DOO' in the modes array
+DDD_MODE_INDEX = 6  # Index 6 corresponds to 'DDD' in the modes array
+
 # DOO mode emergency values
 DOO_RATE = 80
 DOO_A_OUTPUT = 20.0
 DOO_V_OUTPUT = 25.0
-DOO_MODE_INDEX = 5  # Index 5 corresponds to 'DOO' in the modes array
 
 # Track last encoder position for outputs
 last_a_output_steps = 100
@@ -76,6 +79,9 @@ last_left_press_time = 0
 
 emergency_button_pressed = False
 last_emergency_press_time = 0
+
+# DOO mode UI state tracker
+in_doo_settings = False
 
 def handle_down_button():
     global last_down_press_time, down_button_pressed
@@ -100,7 +106,7 @@ def handle_up_button():
         
         
 def handle_left_button():
-    global last_left_press_time, left_button_pressed
+    global last_left_press_time, left_button_pressed, in_doo_settings, current_mode
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
@@ -108,15 +114,23 @@ def handle_left_button():
         last_left_press_time = current_time
         left_button_pressed = True
         print("Left button pressed")
+        
+        # If in DOO settings, transition to DDD mode on left press
+        if in_doo_settings and current_mode == DOO_MODE_INDEX:
+            current_mode = DDD_MODE_INDEX
+            in_doo_settings = False
+            print("Exiting DOO mode, switching to DDD mode")
+
 
 def handle_emergency_button():
-    global last_emergency_press_time, emergency_button_pressed, current_mode
+    global last_emergency_press_time, emergency_button_pressed, current_mode, in_doo_settings
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
     if current_time - last_emergency_press_time > 0.3:
         last_emergency_press_time = current_time
         emergency_button_pressed = True
+        in_doo_settings = True
         print("Emergency button pressed")
         
         # Set DOO mode directly
@@ -124,10 +138,11 @@ def handle_emergency_button():
 
 # Function to set DOO emergency mode
 def set_doo_emergency_mode():
-    global current_mode, current_rate, current_a_output, current_v_output
+    global current_mode, current_rate, current_a_output, current_v_output, in_doo_settings
     
     # Set DOO mode
     current_mode = DOO_MODE_INDEX
+    in_doo_settings = True
     
     # Set emergency values
     current_rate = DOO_RATE
@@ -487,7 +502,7 @@ def reset_v_output():
 # API endpoint for setting mode
 @app.route('/api/mode/set', methods=['POST'])
 def set_mode():
-    global current_mode
+    global current_mode, in_doo_settings
     
     # Check if locked
     if is_locked:
@@ -498,14 +513,35 @@ def set_mode():
         new_mode = int(data['mode'])
         # Valid mode is between 0-7
         if 0 <= new_mode <= 7:
+            # Special case for DDD mode when exiting DOO
+            if current_mode == DOO_MODE_INDEX and new_mode == DDD_MODE_INDEX:
+                in_doo_settings = False
+            
             current_mode = new_mode
+            
             # If setting to DOO mode (5), apply emergency settings
             if new_mode == DOO_MODE_INDEX:
                 set_doo_emergency_mode()
+                
             return jsonify({'success': True, 'mode': current_mode})
         else:
             return jsonify({'error': 'Invalid mode value'}), 400
     return jsonify({'error': 'No mode provided'}), 400
+
+# API endpoint for exiting DOO mode to DDD mode
+@app.route('/api/exit_doo', methods=['POST'])
+def exit_doo_mode():
+    global current_mode, in_doo_settings
+    
+    if current_mode == DOO_MODE_INDEX:
+        current_mode = DDD_MODE_INDEX
+        in_doo_settings = False
+        print("Exiting DOO mode, switching to DDD mode")
+        
+    return jsonify({
+        'success': True,
+        'mode': current_mode
+    })
 
 # API endpoint to explicitly set DOO emergency mode
 @app.route('/api/emergency/doo', methods=['POST'])
@@ -540,6 +576,7 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
+        'in_doo_settings': in_doo_settings,
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
