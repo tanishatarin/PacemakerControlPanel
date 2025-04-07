@@ -46,12 +46,6 @@ const apiBaseUrl = 'http://raspberrypi.local:5000/api';
 // Fallback to localhost if raspberrypi.local is not available
 let useLocalhost = false;
 
-// DOO mode constants
-export const DOO_MODE_INDEX = 5;
-export const DOO_RATE = 80;
-export const DOO_A_OUTPUT = 20.0;
-export const DOO_V_OUTPUT = 25.0;
-
 // Function to get the appropriate base URL
 const getBaseUrl = () => {
   return useLocalhost ? 'http://localhost:5000/api' : apiBaseUrl;
@@ -110,21 +104,6 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
   try {
     const promises = [];
     
-    // If setting mode to DOO, use dedicated endpoint
-    if (data.mode === DOO_MODE_INDEX) {
-      promises.push(
-        fetch(`${getBaseUrl()}/emergency/doo`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }).then(handleApiError)
-      );
-      
-      // Since DOO emergency endpoint handles all values, we can return early
-      await Promise.all(promises);
-      return;
-    }
-    
-    // For non-DOO modes, update individual settings
     if (data.rate !== undefined) {
       promises.push(
         fetch(`${getBaseUrl()}/rate/set`, {
@@ -172,21 +151,6 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
   }
 };
 
-// Activate DOO emergency mode
-export const activateDOOEmergencyMode = async (): Promise<void> => {
-  try {
-    await fetch(`${getBaseUrl()}/emergency/doo`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }).then(handleApiError);
-  } catch (error) {
-    console.error('Error activating DOO emergency mode:', error);
-    throw error;
-  }
-};
-
 // Toggle the lock state
 export const toggleLock = async (): Promise<boolean | null> => {
   try {
@@ -226,11 +190,6 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
-// Check if mode is DOO mode
-export const isDOOMode = (mode: number): boolean => {
-  return mode === DOO_MODE_INDEX;
-};
-
 // Start polling the encoder API
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
@@ -259,13 +218,6 @@ export const startEncoderPolling = (
           mode: status.mode
         };
         
-        // Handle DOO mode specifically - ensure emergency values
-        if (status.mode === DOO_MODE_INDEX) {
-          controlData.rate = DOO_RATE;
-          controlData.a_output = DOO_A_OUTPUT;
-          controlData.v_output = DOO_V_OUTPUT;
-        }
-        
         onDataUpdate(controlData);
         
         // Check for button presses
@@ -288,13 +240,6 @@ export const startEncoderPolling = (
           // Handle emergency button press
           if (status.buttons.emergency_pressed) {
             window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
-            
-            // Also ensure DOO emergency values are applied
-            if (status.mode !== DOO_MODE_INDEX) {
-              activateDOOEmergencyMode().catch(err => 
-                console.error('Failed to activate DOO emergency mode:', err)
-              );
-            }
           }
         }
       }

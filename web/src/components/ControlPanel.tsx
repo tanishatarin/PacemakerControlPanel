@@ -70,15 +70,10 @@ const ControlPanel: React.FC = () => {
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
   
-  // Check if in DOO mode
-  const isInDOOMode = useCallback(() => {
-    return modes[selectedModeIndex] === 'DOO';
-  }, [modes, selectedModeIndex]);
-  
   // Get if controls should be locked (device locked or in DOO mode)
   const isControlsLocked = useCallback(() => {
-    return isLocked || isInDOOMode();
-  }, [isLocked, isInDOOMode]);
+    return isLocked || modes[selectedModeIndex] === 'DOO';
+  }, [isLocked, modes, selectedModeIndex]);
   
   // Show error when trying to adjust while locked
   const handleLockError = useCallback(() => {
@@ -103,68 +98,14 @@ const ControlPanel: React.FC = () => {
     setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
   }, [autoLockTimer, encoderConnected]);
 
-  // Set to DDD mode when exiting DOO mode
-  const switchToDDDMode = useCallback(() => {
-    const dddIndex = modes.indexOf('DDD');
-    setSelectedModeIndex(dddIndex);
-    setPendingModeIndex(dddIndex);
-    
-    // If connected to hardware, update mode
-    if (encoderConnected) {
-      updateControls({ mode: dddIndex });
-    }
-  }, [encoderConnected, modes]);
-
-  // // Handle mode navigation - memoized with useCallback
-  // const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
-  //   resetAutoLockTimer();
-    
-  //   // If we're in DDD settings, handle navigation within those settings
-  //   if (showDDDSettings) {
-  //     if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
-  //       setSelectedDDDSetting('aSensitivity');
-  //     } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
-  //       setSelectedDDDSetting('vSensitivity');
-  //     }
-  //     return;
-  //   }
-    
-  //   // In DOO settings, allow navigation to change modes even if in DOO mode
-  //   if (showDOOSettings) {
-  //     // Allow navigating out of DOO mode
-  //     let newIndex;
-  //     if (direction === 'up') {
-  //       newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
-  //     } else {
-  //       newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
-  //     }
-      
-  //     setPendingModeIndex(newIndex);
-  //     return;
-  //   }
-    
-  //   // If locked but not in DOO settings, block navigation
-  //   if (isLocked && !showDOOSettings) {
-  //     handleLockError();
-  //     return;
-  //   }
-    
-  //   // Otherwise handle regular mode navigation
-  //   let newIndex;
-  //   if (direction === 'up') {
-  //     newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
-  //   } else {
-  //     newIndex = pendingModeIndex === modes.length - 1 ? 0 : pendingModeIndex + 1;
-  //   }
-    
-  //   setPendingModeIndex(newIndex);
-  // }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
-
   // Handle mode navigation - memoized with useCallback
   const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
     resetAutoLockTimer();
     
-    // Always allow navigation in DOO mode
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
     
     // If we're in DDD settings, handle navigation within those settings
     if (showDDDSettings) {
@@ -176,13 +117,7 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // If we're not in DOO mode AND we're locked, show error
-    if (isLocked && !isInDOOMode()) {
-      handleLockError();
-      return;
-    }
-    
-    // Otherwise handle regular mode navigation - DOO mode can still navigate
+    // Otherwise handle regular mode navigation
     let newIndex;
     if (direction === 'up') {
       newIndex = pendingModeIndex === 0 ? modes.length - 1 : pendingModeIndex - 1;
@@ -191,70 +126,19 @@ const ControlPanel: React.FC = () => {
     }
     
     setPendingModeIndex(newIndex);
-  }, [isLocked, showDDDSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer, isInDOOMode]);
-
-  // Apply DOO emergency mode values
-  const applyDOOEmergencyValues = useCallback(() => {
-    // Set emergency parameters
-    setRate(80);
-    setAOutput(20.0);
-    setVOutput(25.0);
+    // Do NOT set selectedModeIndex here - only update the pending mode
     
-    // If connected to hardware, send emergency mode settings
-    if (encoderConnected) {
-      updateControls({
-        rate: 80,
-        a_output: 20.0,
-        v_output: 25.0,
-        mode: modes.indexOf('DOO') // Also update the mode on the hardware
-      });
-    }
-  }, [encoderConnected, modes]);
+  }, [isLocked, showDDDSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
 
-  // Handle left arrow press for DOO mode
-  const handleDOOExitNavigation = useCallback(() => {
-    if (showDOOSettings) {
-      // When exiting DOO settings, switch to DDD mode
-      switchToDDDMode();
-      
-      // Close the DOO settings
-      setShowDOOSettings(false);
-      
-      // Do not show DDD settings screen immediately
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      
-      return true; // Indicate we handled the navigation
-    }
-    return false; // Not handled here
-  }, [showDOOSettings, switchToDDDMode]);
-
-  // Handle left arrow press
+  // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
-
-    // If we're in DOO settings, exit to main mode panel and set mode to DDD
-    if (showDOOSettings) {
-      // Exit DOO settings
-      setShowDOOSettings(false);
-      
-      // Switch to DDD mode
-      const dddIndex = modes.indexOf('DDD');
-      setSelectedModeIndex(dddIndex);
-      setPendingModeIndex(dddIndex);
-      
-      // Send DDD mode to hardware
-      if (encoderConnected) {
-        updateControls({ mode: dddIndex });
-      }
-      
-      return;
-    }
     
-    // If we're in any other settings screen, go back to mode selection
-    if (showDDDSettings || showVVISettings) {
+    // If we're in a settings screen, go back to the mode selection
+    if (showDDDSettings || showVVISettings || showDOOSettings) {
       setShowDDDSettings(false);
       setShowVVISettings(false);
+      setShowDOOSettings(false);
       return;
     }
     
@@ -263,39 +147,34 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Apply the selected mode
-    const newMode = modes[pendingModeIndex];
+    // Otherwise, apply the selected mode and show appropriate settings
     setSelectedModeIndex(pendingModeIndex);
+    const newMode = modes[pendingModeIndex];
     
-    // If switching to DOO mode, apply emergency values
-    if (newMode === 'DOO') {
-      // Apply emergency values
-      setRate(80);
-      setAOutput(20.0);
-      setVOutput(25.0);
-      
-      // Send to hardware
-      if (encoderConnected) {
-        updateControls({
-          rate: 80,
-          a_output: 20.0,
-          v_output: 25.0,
-          mode: pendingModeIndex
-        });
-      }
-      
-      // Show DOO settings
-      setShowDOOSettings(true);
-    } else if (newMode === 'DDD') {
+    // Check if mode requires special settings screen
+    if (newMode === 'DDD') {
       setShowDDDSettings(true);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
     } else if (newMode === 'VVI') {
       setShowVVISettings(true);
+      setShowDDDSettings(false);
+      setShowDOOSettings(false);
+    } else if (newMode === 'DOO') {
+      setShowDOOSettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+    } else {
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
     }
     
+    // If exiting async message mode
     if (showAsyncMessage) {
       setShowAsyncMessage(false);
     }
-  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer, encoderConnected]);
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
 
   // Check encoder connection on startup
   useEffect(() => {
@@ -317,25 +196,6 @@ const ControlPanel: React.FC = () => {
             }
           }
 
-          // If mode is reported, update it
-          if (status.mode !== undefined) {
-            const modeIndex = status.mode;
-            if (modeIndex >= 0 && modeIndex < modes.length) {
-              setSelectedModeIndex(modeIndex);
-              setPendingModeIndex(modeIndex);
-              
-              // If DOO mode, apply emergency values
-              if (modes[modeIndex] === 'DOO') {
-                applyDOOEmergencyValues();
-                
-                // Show DOO settings if in DOO mode
-                setShowDOOSettings(true);
-                setShowDDDSettings(false);
-                setShowVVISettings(false);
-              }
-            }
-          }
-
           console.log('Connected to encoder API:', status);
         } else {
           setEncoderConnected(false);
@@ -352,17 +212,11 @@ const ControlPanel: React.FC = () => {
     // Also check periodically
     const interval = setInterval(checkConnection, 5000);
     return () => clearInterval(interval);
-  }, [modes, applyDOOEmergencyValues]);
+  }, []);
   
   // Handle local value changes and sync to hardware
   const handleLocalValueChange = async (key: string, value: number) => {
-    // If in DOO mode, don't allow value changes
-    if (isInDOOMode()) {
-      handleLockError();
-      return;
-    }
-    
-    if (isLocked) {
+    if (isControlsLocked()) {
       handleLockError();
       return;
     }
@@ -406,19 +260,8 @@ const ControlPanel: React.FC = () => {
           return;
         }
         
-        // Don't update if in DOO mode (should maintain fixed values)
-        if (isInDOOMode()) {
-          // However, if we detect DOO mode from the hardware, make sure UI values match
-          if (data.rate !== 80 || data.a_output !== 20.0 || data.v_output !== 25.0) {
-            setRate(80);
-            setAOutput(20.0);
-            setVOutput(25.0);
-          }
-          return;
-        }
-        
-        // Don't update if device is locked
-        if (isLocked) {
+        // Don't update if controls should be locked
+        if (isControlsLocked()) {
           return;
         }
         
@@ -446,22 +289,6 @@ const ControlPanel: React.FC = () => {
             }
           }
         }
-        
-        // handle mode changes from hardware
-        if (data.mode !== undefined && data.mode !== selectedModeIndex) {
-          setSelectedModeIndex(data.mode);
-          setPendingModeIndex(data.mode);
-          
-          // If switched to DOO mode, apply emergency values
-          if (modes[data.mode] === 'DOO') {
-            applyDOOEmergencyValues();
-            
-            // Show DOO settings if in DOO mode
-            setShowDOOSettings(true);
-            setShowDDDSettings(false);
-            setShowVVISettings(false);
-          }
-        }
       },
       // Status callback
       (status) => {
@@ -477,7 +304,7 @@ const ControlPanel: React.FC = () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, isInDOOMode, selectedModeIndex, modes, applyDOOEmergencyValues]);
+  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
 
   // Handle pause button functionality
   useEffect(() => {
@@ -596,19 +423,30 @@ const ControlPanel: React.FC = () => {
   const handleEmergencyMode = useCallback(() => {
     resetAutoLockTimer();
     
+    // Set emergency parameters
+    setRate(80);
+    setAOutput(20.0);
+    setVOutput(25.0);
+    
     // Set to DOO mode
     const dooIndex = modes.indexOf('DOO');
     setSelectedModeIndex(dooIndex);
     setPendingModeIndex(dooIndex);
     
-    // Apply emergency values
-    applyDOOEmergencyValues();
-    
     // Show DOO settings
     setShowDOOSettings(true);
     setShowDDDSettings(false);
     setShowVVISettings(false);
-  }, [resetAutoLockTimer, modes, applyDOOEmergencyValues]);
+    
+    // If connected to hardware, send emergency mode settings
+    if (encoderConnected) {
+      updateControls({
+        rate: 80,
+        a_output: 20.0,
+        v_output: 25.0
+      });
+    }
+  }, [resetAutoLockTimer, modes, encoderConnected]);
 
   // Set up listener for hardware up button press
   useEffect(() => {
@@ -814,16 +652,6 @@ const ControlPanel: React.FC = () => {
       );
     }
   };
-
-  // Effect to enforce DOO mode values
-  useEffect(() => {
-    if (isInDOOMode()) {
-      // Enforce DOO mode values
-      if (rate !== 80 || aOutput !== 20.0 || vOutput !== 25.0) {
-        applyDOOEmergencyValues();
-      }
-    }
-  }, [isInDOOMode, rate, aOutput, vOutput, applyDOOEmergencyValues]);
 
   // Main control panel UI
   return (

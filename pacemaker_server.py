@@ -54,15 +54,6 @@ max_a_output = 20.0
 min_v_output = 0.0
 max_v_output = 25.0
 
-# Mode indices
-DOO_MODE_INDEX = 5  # Index 5 corresponds to 'DOO' in the modes array
-DDD_MODE_INDEX = 6  # Index 6 corresponds to 'DDD' in the modes array
-
-# DOO mode emergency values
-DOO_RATE = 80
-DOO_A_OUTPUT = 20.0
-DOO_V_OUTPUT = 25.0
-
 # Track last encoder position for outputs
 last_a_output_steps = 100
 last_v_output_steps = 100
@@ -80,8 +71,16 @@ last_left_press_time = 0
 emergency_button_pressed = False
 last_emergency_press_time = 0
 
-# DOO mode UI state tracker
-in_doo_settings = False
+def handle_down_button():
+    global last_down_press_time, down_button_pressed
+    current_time = time.time()
+    
+    # Debounce logic - only register a press if it's been at least 300ms since the last one
+    if current_time - last_down_press_time > 0.3:
+        last_down_press_time = current_time
+        down_button_pressed = True
+        print("Down button pressed")
+
 
 def handle_up_button():
     global last_up_press_time, up_button_pressed
@@ -93,18 +92,9 @@ def handle_up_button():
         up_button_pressed = True
         print("Up button pressed")
         
-def handle_down_button():
-    global last_down_press_time, down_button_pressed
-    current_time = time.time()
-    
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_down_press_time > 0.3:
-        last_down_press_time = current_time
-        down_button_pressed = True
-        print("Down button pressed")
-          
+        
 def handle_left_button():
-    global last_left_press_time, left_button_pressed, current_mode
+    global last_left_press_time, left_button_pressed
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
@@ -112,62 +102,23 @@ def handle_left_button():
         last_left_press_time = current_time
         left_button_pressed = True
         print("Left button pressed")
-        
-        # If in DOO mode, transition to DDD mode on left press
-        if current_mode == DOO_MODE_INDEX:
-            current_mode = DDD_MODE_INDEX
-            print("Exiting DOO mode, switching to DDD mode")
-            
+
 def handle_emergency_button():
-    global last_emergency_press_time, emergency_button_pressed, current_mode, in_doo_settings
+    global last_emergency_press_time, emergency_button_pressed
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
     if current_time - last_emergency_press_time > 0.3:
         last_emergency_press_time = current_time
         emergency_button_pressed = True
-        in_doo_settings = True
         print("Emergency button pressed")
-        
-        # Set DOO mode directly
-        set_doo_emergency_mode()
-
-# Function to set DOO emergency mode
-def set_doo_emergency_mode():
-    global current_mode, current_rate, current_a_output, current_v_output, in_doo_settings
-    
-    # Set DOO mode
-    current_mode = DOO_MODE_INDEX
-    in_doo_settings = True
-    
-    # Set emergency values
-    current_rate = DOO_RATE
-    current_a_output = DOO_A_OUTPUT
-    current_v_output = DOO_V_OUTPUT
-    
-    # Update encoder positions to match
-    rate_encoder.steps = DOO_RATE
-    
-    # Update A and V output encoders (without triggering their callbacks)
-    a_output_encoder.steps = 100  # arbitrary value - we're enforcing the output values
-    v_output_encoder.steps = 100  # arbitrary value - we're enforcing the output values
-    
-    print(f"DOO Emergency Mode set: Rate={DOO_RATE}ppm, A={DOO_A_OUTPUT}mA, V={DOO_V_OUTPUT}mA")
-
-# Check if in DOO mode
-def is_in_doo_mode():
-    return current_mode == DOO_MODE_INDEX
 
 # Function to update the current rate value
 def update_rate():
     global current_rate
     
-    # Skip updating if locked or in DOO mode
-    if is_locked or is_in_doo_mode():
-        # If in DOO mode, force the rate to emergency value
-        if is_in_doo_mode():
-            current_rate = DOO_RATE
-            rate_encoder.steps = DOO_RATE  # Reset the encoder position to match
+    # Skip updating if locked
+    if is_locked or current_mode == 5:  # 5 = DOO mode
         return
         
     current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
@@ -189,11 +140,8 @@ def get_output_step_size(value):
 def update_a_output():
     global current_a_output, last_a_output_steps
     
-    # Skip updating if locked or in DOO mode
-    if is_locked or is_in_doo_mode():
-        # If in DOO mode, force the A output to emergency value
-        if is_in_doo_mode():
-            current_a_output = DOO_A_OUTPUT
+    # Skip updating if locked
+    if is_locked or current_mode == 5:  # 5 = DOO mode
         return
     
     # Get current steps from encoder
@@ -229,11 +177,8 @@ def update_a_output():
 def update_v_output():
     global current_v_output, last_v_output_steps
     
-    # Skip updating if locked or in DOO mode
-    if is_locked or is_in_doo_mode():
-        # If in DOO mode, force the V output to emergency value
-        if is_in_doo_mode():
-            current_v_output = DOO_V_OUTPUT
+    # Skip updating if locked
+    if is_locked or current_mode == 5:  # 5 = DOO mode
         return
     
     # Get current steps from encoder
@@ -309,14 +254,7 @@ def set_lock():
 # API endpoints for Rate
 @app.route('/api/rate', methods=['GET'])
 def get_rate():
-    global current_rate
-    
-    # If in DOO mode, ensure rate is at emergency value
-    if is_in_doo_mode():
-        current_rate = DOO_RATE
-    else:
-        update_rate()
-        
+    update_rate()
     return jsonify({
         'value': current_rate,
         'min': min_rate,
@@ -326,14 +264,9 @@ def get_rate():
 @app.route('/api/rate/set', methods=['POST'])
 def set_rate():
     global current_rate
-    
-    # Check if in DOO mode - reject any changes
-    if is_in_doo_mode():
-        return jsonify({'error': 'Device is in DOO mode, rate is fixed at 80ppm'}), 403
-        
     # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
+    if is_locked or current_mode == 5:  # 5 = DOO mode
+        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
         
     data = request.json
     if 'value' in data:
@@ -345,15 +278,9 @@ def set_rate():
 
 @app.route('/api/rate/reset', methods=['POST'])
 def api_reset_rate():
-    global current_rate
-    
-    # Check if in DOO mode - reject any changes
-    if is_in_doo_mode():
-        return jsonify({'error': 'Device is in DOO mode, rate is fixed at 80ppm'}), 403
-        
     # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
+    if is_locked or current_mode == 5:  # 5 = DOO mode
+        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
         
     reset_rate()
     return jsonify({'success': True, 'value': current_rate})
@@ -368,14 +295,7 @@ def reset_rate():
 # API endpoints for A. Output
 @app.route('/api/a_output', methods=['GET'])
 def get_a_output():
-    global current_a_output
-    
-    # If in DOO mode, ensure a_output is at emergency value
-    if is_in_doo_mode():
-        current_a_output = DOO_A_OUTPUT
-    else:
-        update_a_output()
-        
+    update_a_output()
     return jsonify({
         'value': current_a_output,
         'min': min_a_output,
@@ -385,14 +305,9 @@ def get_a_output():
 @app.route('/api/a_output/set', methods=['POST'])
 def set_a_output():
     global current_a_output, last_a_output_steps
-    
-    # Check if in DOO mode - reject any changes
-    if is_in_doo_mode():
-        return jsonify({'error': 'Device is in DOO mode, A Output is fixed at 20.0mA'}), 403
-        
     # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
+    if is_locked or current_mode == 5:  # 5 = DOO mode
+        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
         
     data = request.json
     if 'value' in data:
@@ -409,15 +324,9 @@ def set_a_output():
 
 @app.route('/api/a_output/reset', methods=['POST'])
 def api_reset_a_output():
-    global current_a_output
-    
-    # Check if in DOO mode - reject any changes
-    if is_in_doo_mode():
-        return jsonify({'error': 'Device is in DOO mode, A Output is fixed at 20.0mA'}), 403
-        
     # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
+    if is_locked or current_mode == 5:  # 5 = DOO mode
+        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
         
     reset_a_output()
     return jsonify({'success': True, 'value': current_a_output})
@@ -433,14 +342,7 @@ def reset_a_output():
 # API endpoints for V. Output
 @app.route('/api/v_output', methods=['GET'])
 def get_v_output():
-    global current_v_output
-    
-    # If in DOO mode, ensure v_output is at emergency value
-    if is_in_doo_mode():
-        current_v_output = DOO_V_OUTPUT
-    else:
-        update_v_output()
-        
+    update_v_output()
     return jsonify({
         'value': current_v_output,
         'min': min_v_output,
@@ -450,14 +352,9 @@ def get_v_output():
 @app.route('/api/v_output/set', methods=['POST'])
 def set_v_output():
     global current_v_output, last_v_output_steps
-    
-    # Check if in DOO mode - reject any changes
-    if is_in_doo_mode():
-        return jsonify({'error': 'Device is in DOO mode, V Output is fixed at 25.0mA'}), 403
-        
     # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
+    if is_locked or current_mode == 5:  # 5 = DOO mode
+        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
         
     data = request.json
     if 'value' in data:
@@ -474,15 +371,9 @@ def set_v_output():
 
 @app.route('/api/v_output/reset', methods=['POST'])
 def api_reset_v_output():
-    global current_v_output
-    
-    # Check if in DOO mode - reject any changes
-    if is_in_doo_mode():
-        return jsonify({'error': 'Device is in DOO mode, V Output is fixed at 25.0mA'}), 403
-        
     # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
+    if is_locked or current_mode == 5:  # 5 = DOO mode
+        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
         
     reset_v_output()
     return jsonify({'success': True, 'value': current_v_output})
@@ -498,7 +389,7 @@ def reset_v_output():
 # API endpoint for setting mode
 @app.route('/api/mode/set', methods=['POST'])
 def set_mode():
-    global current_mode, in_doo_settings
+    global current_mode
     
     # Check if locked
     if is_locked:
@@ -509,60 +400,21 @@ def set_mode():
         new_mode = int(data['mode'])
         # Valid mode is between 0-7
         if 0 <= new_mode <= 7:
-            # Special case for DDD mode when exiting DOO
-            if current_mode == DOO_MODE_INDEX and new_mode == DDD_MODE_INDEX:
-                in_doo_settings = False
-            
             current_mode = new_mode
-            
             # If setting to DOO mode (5), apply emergency settings
-            if new_mode == DOO_MODE_INDEX:
-                set_doo_emergency_mode()
-                
+            if new_mode == 5:
+                reset_rate()  # Set rate to 80 ppm
+                current_a_output = 20.0  # Set A output to 20 mA
+                current_v_output = 25.0  # Set V output to 25 mA
             return jsonify({'success': True, 'mode': current_mode})
         else:
             return jsonify({'error': 'Invalid mode value'}), 400
     return jsonify({'error': 'No mode provided'}), 400
 
-# API endpoint for exiting DOO mode to DDD mode
-@app.route('/api/exit_doo', methods=['POST'])
-def exit_doo_mode():
-    global current_mode, in_doo_settings
-    
-    if current_mode == DOO_MODE_INDEX:
-        current_mode = DDD_MODE_INDEX
-        in_doo_settings = False
-        print("Exiting DOO mode, switching to DDD mode")
-        
-    return jsonify({
-        'success': True,
-        'mode': current_mode
-    })
-
-# API endpoint to explicitly set DOO emergency mode
-@app.route('/api/emergency/doo', methods=['POST'])
-def api_set_doo_emergency():
-    # Always allow DOO emergency mode, even if locked
-    set_doo_emergency_mode()
-    return jsonify({
-        'success': True,
-        'mode': current_mode,
-        'rate': current_rate,
-        'a_output': current_a_output,
-        'v_output': current_v_output
-    })
-
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    global current_rate, current_a_output, current_v_output
     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
-    
-    # If in DOO mode, ensure values are at emergency levels
-    if is_in_doo_mode():
-        current_rate = DOO_RATE
-        current_a_output = DOO_A_OUTPUT
-        current_v_output = DOO_V_OUTPUT
     
     # Create response data
     status_data = {
@@ -572,7 +424,6 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
-        'in_doo_settings': in_doo_settings,
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
@@ -633,6 +484,6 @@ if __name__ == '__main__':
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")
-    print(f"Left button on pin GPIO 15")
+    print(f"Left button on pin GPIO 8")
     print(f"Emergency DOO button on pin GPIO 23")
     app.run(host='0.0.0.0', port=5000, debug=False)
