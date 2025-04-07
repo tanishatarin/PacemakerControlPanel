@@ -1,16 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { updateControls } from '../utils/encoderApi';
 
 interface VVISettingsProps {
   vSensitivity: number;
   onVSensitivityChange: (value: number) => void;
   onBack: () => void;
   isLocked: boolean;
+  encoderConnected?: boolean;
 }
 
 const VVISettings: React.FC<VVISettingsProps> = ({
   vSensitivity,
   onVSensitivityChange,
-  isLocked
+  isLocked,
+  encoderConnected = false
 }) => {
   // Function to get slider color based on value
   const getSliderColor = (value: number, min: number, max: number) => {
@@ -28,7 +31,7 @@ const VVISettings: React.FC<VVISettingsProps> = ({
     return 2;
   };
 
-  // Similar conversion functions for V sensitivity
+  // Conversion functions for V sensitivity
   const vSliderToValue = (sliderValue: number): number => {
     if (sliderValue >= 99.5) return 0; // ASYNC when at maximum position
     // Map from 0-99.5 to 20-0.8 range (inverted)
@@ -43,17 +46,36 @@ const VVISettings: React.FC<VVISettingsProps> = ({
 
   // Handle V sensitivity slider change
   const handleVSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isLocked) return;
+    
     const sliderValue = parseFloat(e.target.value);
     const actualValue = vSliderToValue(sliderValue);
     onVSensitivityChange(parseFloat(actualValue.toFixed(1)));
   };
+
+  // Effect to activate the V sensitivity control in hardware
+  useEffect(() => {
+    if (encoderConnected) {
+      // Set V sensitivity as the active control for the mode output encoder
+      updateControls({ 
+        active_control: 'v_sensitivity',
+        v_sensitivity: vSensitivity
+      }).catch(err => console.error('Failed to set active control:', err));
+      
+      // Reset active control when component unmounts
+      return () => {
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      };
+    }
+  }, [encoderConnected, vSensitivity]);
 
   const isVSensitivityDisabled = vSensitivity === 0;
 
   return (
     <div className="">
       <div className="bg-white rounded-xl">
-        <div className="flex justify-between items-center  border-b">
+        <div className="flex justify-between items-center border-b p-2">
           <h2 className="text-lg font-semibold">VVI Settings</h2>
           <div className="w-5"></div> {/* Spacer for alignment */}
         </div>
@@ -102,6 +124,12 @@ const VVISettings: React.FC<VVISettingsProps> = ({
             <p className="text-sm text-gray-600">VVI Mode (Ventricular Inhibited)</p>
             <p className="text-xs text-gray-500 mt-1">Paces the ventricle when no natural ventricular activity is detected. Commonly used for atrial fibrillation or other atrial arrhythmias.</p>
           </div>
+          
+          {encoderConnected && (
+            <div className="mt-2 text-xs text-green-600">
+              Hardware encoder active for V Sensitivity control
+            </div>
+          )}
         </div>
       </div>
     </div>

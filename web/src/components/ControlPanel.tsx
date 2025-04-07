@@ -18,7 +18,6 @@ import {
   EncoderControlData
 } from '../utils/encoderApi';
 
-
 const ControlPanel: React.FC = () => {
   // Main control values
   const [rate, setRate] = useState(80);
@@ -122,8 +121,24 @@ const ControlPanel: React.FC = () => {
     if (showDDDSettings) {
       if (direction === 'up' && selectedDDDSetting === 'vSensitivity') {
         setSelectedDDDSetting('aSensitivity');
+        
+        // Update hardware active control if connected
+        if (encoderConnected) {
+          updateControls({
+            active_control: 'a_sensitivity',
+            a_sensitivity: dddSettings.aSensitivity
+          }).catch(err => console.error('Error updating active control:', err));
+        }
       } else if (direction === 'down' && selectedDDDSetting === 'aSensitivity') {
         setSelectedDDDSetting('vSensitivity');
+        
+        // Update hardware active control if connected
+        if (encoderConnected) {
+          updateControls({
+            active_control: 'v_sensitivity',
+            v_sensitivity: dddSettings.vSensitivity
+          }).catch(err => console.error('Error updating active control:', err));
+        }
       }
       return;
     }
@@ -149,7 +164,7 @@ const ControlPanel: React.FC = () => {
       }
     }
     
-  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, encoderConnected, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, encoderConnected, dddSettings.aSensitivity, dddSettings.vSensitivity, handleLockError, resetAutoLockTimer]);
 
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
@@ -158,6 +173,12 @@ const ControlPanel: React.FC = () => {
     // If we're in a settings screen, go back to the mode selection
     if (showDDDSettings || showVVISettings || showDOOSettings) {
       const currentMode = modes[selectedModeIndex];
+      
+      // Reset active control when leaving settings screens
+      if (encoderConnected) {
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      }
       
       // Special case: When exiting DOO mode, switch to DDD mode
       if (currentMode === 'DOO') {
@@ -213,25 +234,53 @@ const ControlPanel: React.FC = () => {
       setShowDDDSettings(true);
       setShowVVISettings(false);
       setShowDOOSettings(false);
+      
+      // Set the active control to A Sensitivity by default when entering DDD settings
+      if (encoderConnected) {
+        updateControls({
+          active_control: 'a_sensitivity',
+          a_sensitivity: dddSettings.aSensitivity
+        }).catch(err => console.error('Error setting initial active control for DDD:', err));
+      }
     } else if (newMode === 'VVI') {
       setShowVVISettings(true);
       setShowDDDSettings(false);
       setShowDOOSettings(false);
+      
+      // Set the active control to V Sensitivity when entering VVI settings
+      if (encoderConnected) {
+        updateControls({
+          active_control: 'v_sensitivity',
+          v_sensitivity: vviSensitivity
+        }).catch(err => console.error('Error setting initial active control for VVI:', err));
+      }
     } else if (newMode === 'DOO') {
       setShowDOOSettings(true);
       setShowDDDSettings(false);
       setShowVVISettings(false);
+      
+      // Reset the active control when entering DOO mode (no sensitivity settings)
+      if (encoderConnected) {
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      }
     } else {
       setShowDDDSettings(false);
       setShowVVISettings(false);
       setShowDOOSettings(false);
+      
+      // Reset the active control for other modes
+      if (encoderConnected) {
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      }
     }
     
     // If exiting async message mode
     if (showAsyncMessage) {
       setShowAsyncMessage(false);
     }
-  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, selectedModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, selectedModeIndex, modes, showAsyncMessage, encoderConnected, rate, aOutput, vOutput, dddSettings.aSensitivity, vviSensitivity, handleLockError, resetAutoLockTimer]);
 
   // Check encoder connection on startup and reconnect if lost
   useEffect(() => {
@@ -242,7 +291,24 @@ const ControlPanel: React.FC = () => {
           setEncoderConnected(true);
           setHardwareStatus(status);
           
-          // checks lock state 
+          // Update sensitivity values from hardware if available
+          if (status.a_sensitivity !== undefined) {
+            setDddSettings(prev => ({
+              ...prev,
+              aSensitivity: status.a_sensitivity || prev.aSensitivity
+            }));
+          }
+          
+          if (status.v_sensitivity !== undefined) {
+            // Update both DDD and VVI sensitivity values
+            setDddSettings(prev => ({
+              ...prev,
+              vSensitivity: status.v_sensitivity || prev.vSensitivity
+            }));
+            setVviSensitivity(status.v_sensitivity || vviSensitivity);
+          }
+          
+          // Check lock state 
           if (status.locked !== undefined) {
             setIsLocked(status.locked);
           } else {
@@ -275,7 +341,7 @@ const ControlPanel: React.FC = () => {
     // Check more frequently (every 2 seconds) to detect and recover from connection loss quickly
     const interval = setInterval(checkConnection, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [encoderConnected, vviSensitivity]);
   
   // Handle local value changes and sync to hardware
   const handleLocalValueChange = async (key: string, value: number) => {
@@ -333,7 +399,7 @@ const ControlPanel: React.FC = () => {
           return;
         }
         
-        // Don't update if controls should be locked
+        // Don't update main controls if they should be locked
         // BUT allow hardware mode data to update our UI mode
         if (isControlsLocked()) {
           // Only process lock state changes and mode changes when locked
@@ -362,6 +428,40 @@ const ControlPanel: React.FC = () => {
         
         if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
           setVOutput(data.v_output);
+        }
+
+        // Handle sensitivity value updates from hardware
+        if (data.a_sensitivity !== undefined) {
+          setDddSettings(prev => {
+            // Only update if value has changed (considering floating point rounding)
+            if (Math.abs(data.a_sensitivity! - prev.aSensitivity) > 0.01) {
+              console.log(`Updating A sensitivity from hardware: ${data.a_sensitivity}`);
+              return {
+                ...prev,
+                aSensitivity: data.a_sensitivity!
+              };
+            }
+            return prev;
+          });
+        }
+        
+        if (data.v_sensitivity !== undefined) {
+          // Update both DDD and VVI sensitivity values when they change
+          setDddSettings(prev => {
+            if (Math.abs(data.v_sensitivity! - prev.vSensitivity) > 0.01) {
+              console.log(`Updating V sensitivity in DDD from hardware: ${data.v_sensitivity}`);
+              return {
+                ...prev,
+                vSensitivity: data.v_sensitivity!
+              };
+            }
+            return prev;
+          });
+          
+          if (Math.abs(data.v_sensitivity - vviSensitivity) > 0.01) {
+            console.log(`Updating VVI sensitivity from hardware: ${data.v_sensitivity}`);
+            setVviSensitivity(data.v_sensitivity);
+          }
         }
 
         // Handle lock state changes
@@ -397,7 +497,7 @@ const ControlPanel: React.FC = () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
+  }, [encoderConnected, rate, aOutput, vOutput, vviSensitivity, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
 
   // Handle pause button functionality
   useEffect(() => {
@@ -486,8 +586,11 @@ const ControlPanel: React.FC = () => {
       lastUpdateRef.current = { source: 'frontend', time: Date.now() };
       setLocalControlActive(true);
       
+      // Directly update the sensitivity value in hardware
+      const controlType = key === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
       updateControls({ 
-        active_control: key === 'aSensitivity' ? 'a_output' : 'v_output'
+        active_control: controlType,
+        [controlType]: value
       });
       
       // Allow hardware control again after a short delay
@@ -512,9 +615,10 @@ const ControlPanel: React.FC = () => {
       lastUpdateRef.current = { source: 'frontend', time: Date.now() };
       setLocalControlActive(true);
       
+      // Update the v_sensitivity value directly in hardware
       updateControls({ 
-        active_control: 'v_output',
-        v_output: value  // Might need adjustment depending on your implementation
+        active_control: 'v_sensitivity',
+        v_sensitivity: value
       });
       
       // Allow hardware control again after a short delay
@@ -549,7 +653,8 @@ const ControlPanel: React.FC = () => {
         rate: 80,
         a_output: 20.0,
         v_output: 25.0,
-        mode: dooIndex // Add mode update to ensure hardware is synchronized
+        mode: dooIndex, // Add mode update to ensure hardware is synchronized
+        active_control: 'none' // Reset active control in emergency mode
       });
     }
   }, [resetAutoLockTimer, modes, encoderConnected]);
@@ -711,6 +816,7 @@ const ControlPanel: React.FC = () => {
           isLocked={isLocked}
           selectedSetting={selectedDDDSetting}
           onNavigate={handleModeNavigation}
+          encoderConnected={encoderConnected}
         />
       );
     } else if (showVVISettings) {
@@ -720,6 +826,7 @@ const ControlPanel: React.FC = () => {
           onVSensitivityChange={handleVVISensitivityChange}
           onBack={handleLeftArrowPress}
           isLocked={isLocked}
+          encoderConnected={encoderConnected}
         />
       );
     } else if (showDOOSettings) {
@@ -739,7 +846,7 @@ const ControlPanel: React.FC = () => {
               onClick={() => {
                 if (!isLocked) {
                   setPendingModeIndex(index);
-                  
+                                    
                   // Also update the selected mode index immediately to fix header display
                   setSelectedModeIndex(index);
                   

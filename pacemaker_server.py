@@ -31,6 +31,7 @@ try:
     # Set up the V Output rotary encoder (Clock 13, DT 6)
     v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
+    # Set up the Mode Output encoder (Clock 8, DT 7)
     mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
 
     # Set up the Lock Button (from the screenshot, using GPIO 17)
@@ -39,13 +40,10 @@ try:
     # Set up the Up & down Button  (using GPIO 26, 14)
     up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
     down_button = Button(14, bounce_time=0.05)  # Add down button on pin 14
-    left_button = Button(15, bounce_time=0.05)  # Add left button on pin 8
+    left_button = Button(15, bounce_time=0.05)  # Add left button on pin 15
 
     # Set up the Emergency DOO button (pin 23)
     emergency_button = Button(23, bounce_time=0.05)  # Add emergency button on pin 23
-    
-    # Set up LED for lock indicator (use GPIO 18)
-    # lock_led = LED(18)  # GPIO pin for the LED
     
 except Exception as e:
     logger.error(f"Error initializing hardware: {e}")
@@ -89,10 +87,21 @@ current_a_output = 10.0
 v_output_encoder.steps = 100  # 10.0 mA initially
 current_v_output = 10.0
 
+mode_output_encoder.steps = 100  # Middle position for sensitivity
+current_mode_output = 100
+
+# Current active control (used for the mode encoder)
+# Options: 'none', 'a_sensitivity', 'v_sensitivity'
+active_control = 'none'
+
+# Sensitivity values
+a_sensitivity = 0.5  # Default value (mV)
+v_sensitivity = 2.0  # Default value (mV)
+
 # Lock state
 is_locked = False
 
-# Current mode (0 = VOO, 5 = DOO, etc.)
+# Current mode (0 = VOO, 1 = VVI, 5 = DOO, 6 = DDD, etc.)
 current_mode = 0
 
 # Min/max values
@@ -105,9 +114,16 @@ max_a_output = 20.0
 min_v_output = 0.0
 max_v_output = 25.0
 
+min_a_sensitivity = 0.4  # mV
+max_a_sensitivity = 10.0  # mV
+
+min_v_sensitivity = 0.8  # mV
+max_v_sensitivity = 20.0  # mV
+
 # Track last encoder position for outputs
 last_a_output_steps = 100
 last_v_output_steps = 100
+last_mode_output_steps = 100
 
 # Button state trackers
 up_button_pressed = False
@@ -267,20 +283,131 @@ def update_v_output():
             
             logger.info(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
+# Function to convert between slider values and sensitivity values
+def slider_to_sensitivity(slider_value, is_a_sensitivity=True):
+    if slider_value >= 99.5:  # Special case for ASYNC mode (0 mV)
+        return 0
+    
+    if is_a_sensitivity:
+        # Map from 0-99.5 to 10-0.4 mV range (inverted)
+        return max_a_sensitivity - (slider_value / 99.5) * (max_a_sensitivity - min_a_sensitivity)
+    else:
+        # Map from 0-99.5 to 20-0.8 mV range (inverted)
+        return max_v_sensitivity - (slider_value / 99.5) * (max_v_sensitivity - min_v_sensitivity)
+
+def sensitivity_to_slider(sensitivity_value, is_a_sensitivity=True):
+    if sensitivity_value == 0:  # Special case for ASYNC mode
+        return 100
+    
+    if is_a_sensitivity:
+        # Map from 10-0.4 mV to 0-99.5 range (inverted)
+        return ((max_a_sensitivity - sensitivity_value) / (max_a_sensitivity - min_a_sensitivity)) * 99.5
+    else:
+        # Map from 20-0.8 mV to 0-99.5 range (inverted)
+        return ((max_v_sensitivity - sensitivity_value) / (max_v_sensitivity - min_v_sensitivity)) * 99.5
+
+# Get step size for sensitivity values
+def get_sensitivity_step_size(value, is_a_sensitivity=True):
+    if is_a_sensitivity:
+        if value <= 1:
+            return 0.1
+        if value <= 2:
+            return 0.2
+        if value <= 5:
+            return 0.5
+        return 1.0
+    else:  # For V sensitivity
+        if value <= 1:
+            return 0.2
+        if value <= 3:
+            return 0.5
+        if value <= 10:
+            return 1.0
+        return 2.0
+
+# Function to update the current Mode Output value (for sensitivity controls)
+def update_mode_output():
+    global a_sensitivity, v_sensitivity, last_mode_output_steps, active_control
+    
+    with encoder_lock:
+        # Skip updating if locked or in DOO mode or if no control is active
+        if is_locked or current_mode == 5 or active_control == 'none':
+            return
+        
+        # Get current steps from encoder
+        current_steps = mode_output_encoder.steps
+        
+        # Calculate the difference in steps
+        diff = current_steps - last_mode_output_steps
+        
+        # If there's a change in steps
+        if diff != 0:
+            # Update the last steps first to prevent multiple updates
+            last_mode_output_steps = current_steps
+            
+            # Handle A Sensitivity adjustment
+            if active_control == 'a_sensitivity':
+                # Get step size based on current value
+                step_size = get_sensitivity_step_size(a_sensitivity, True)
+                
+                # Adjust sensitivity (note: inverted because higher sensitivity = lower mV)
+                if diff < 0:  # Turning clockwise (increase sensitivity = decrease mV)
+                    a_sensitivity -= step_size
+                else:  # Turning counter-clockwise (decrease sensitivity = increase mV)
+                    a_sensitivity += step_size
+                
+                # Bounds check
+                if a_sensitivity < min_a_sensitivity and a_sensitivity != 0:
+                    a_sensitivity = min_a_sensitivity
+                elif a_sensitivity > max_a_sensitivity:
+                    a_sensitivity = max_a_sensitivity
+                
+                # Round to avoid floating point issues
+                a_sensitivity = round(a_sensitivity / step_size) * step_size
+                
+                # Check for special case: toggle between minimum sensitivity and ASYNC (0)
+                if abs(a_sensitivity - min_a_sensitivity) < 0.01 and diff < 0:
+                    a_sensitivity = 0  # Set to ASYNC (0)
+                elif a_sensitivity == 0 and diff > 0:
+                    a_sensitivity = min_a_sensitivity  # Set to minimum sensitivity
+                
+                logger.info(f"A Sensitivity updated: {a_sensitivity} mV (step size: {step_size}, diff: {diff})")
+            
+            # Handle V Sensitivity adjustment
+            elif active_control == 'v_sensitivity':
+                # Get step size based on current value
+                step_size = get_sensitivity_step_size(v_sensitivity, False)
+                
+                # Adjust sensitivity (note: inverted because higher sensitivity = lower mV)
+                if diff < 0:  # Turning clockwise (increase sensitivity = decrease mV)
+                    v_sensitivity -= step_size
+                else:  # Turning counter-clockwise (decrease sensitivity = increase mV)
+                    v_sensitivity += step_size
+                
+                # Bounds check
+                if v_sensitivity < min_v_sensitivity and v_sensitivity != 0:
+                    v_sensitivity = min_v_sensitivity
+                elif v_sensitivity > max_v_sensitivity:
+                    v_sensitivity = max_v_sensitivity
+                
+                # Round to avoid floating point issues
+                v_sensitivity = round(v_sensitivity / step_size) * step_size
+                
+                # Check for special case: toggle between minimum sensitivity and ASYNC (0)
+                if abs(v_sensitivity - min_v_sensitivity) < 0.01 and diff < 0:
+                    v_sensitivity = 0  # Set to ASYNC (0)
+                elif v_sensitivity == 0 and diff > 0:
+                    v_sensitivity = min_v_sensitivity  # Set to minimum sensitivity
+                
+                logger.info(f"V Sensitivity updated: {v_sensitivity} mV (step size: {step_size}, diff: {diff})")
+
 # Function to toggle lock state
 def toggle_lock():
     global is_locked
     
     with encoder_lock:
         is_locked = not is_locked
-        
-        # Update LED based on lock state
-        if is_locked:
-            # lock_led.on()  # Turn on LED when locked
-            logger.info("Device LOCKED")
-        else:
-            # lock_led.off()  # Turn off LED when unlocked
-            logger.info("Device UNLOCKED")
+        logger.info(f"Device {'LOCKED' if is_locked else 'UNLOCKED'}")
 
 # Change the event binding - only toggle on release
 # This ensures a complete click cycle is required
@@ -290,6 +417,7 @@ lock_button.when_released = toggle_lock  # Change from when_pressed to when_rele
 rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
+mode_output_encoder.when_rotated = update_mode_output
 lock_button.when_pressed = toggle_lock
 
 up_button.when_released = handle_up_button
@@ -343,25 +471,6 @@ def set_rate():
                 return jsonify({'error': str(e)}), 400
         return jsonify({'error': 'No value provided'}), 400
 
-@app.route('/api/rate/reset', methods=['POST'])
-def api_reset_rate():
-    with encoder_lock:
-        # Check if locked
-        if is_locked or current_mode == 5:  # 5 = DOO mode
-            return jsonify({'error': 'Device is locked or in DOO mode'}), 403
-            
-        reset_rate()
-        return jsonify({'success': True, 'value': current_rate})
-
-# Function to reset the rate to default
-def reset_rate():
-    global current_rate
-    
-    with encoder_lock:
-        rate_encoder.steps = 80
-        current_rate = 80
-        logger.info("Rate reset to 80 ppm!")
-
 # API endpoints for A. Output
 @app.route('/api/a_output', methods=['GET'])
 def get_a_output():
@@ -398,26 +507,6 @@ def set_a_output():
                 logger.error(f"Error setting A output: {e}")
                 return jsonify({'error': str(e)}), 400
         return jsonify({'error': 'No value provided'}), 400
-
-@app.route('/api/a_output/reset', methods=['POST'])
-def api_reset_a_output():
-    with encoder_lock:
-        # Check if locked
-        if is_locked or current_mode == 5:  # 5 = DOO mode
-            return jsonify({'error': 'Device is locked or in DOO mode'}), 403
-            
-        reset_a_output()
-        return jsonify({'success': True, 'value': current_a_output})
-
-# Function to reset the A. Output to default
-def reset_a_output():
-    global current_a_output, last_a_output_steps
-    
-    with encoder_lock:
-        a_output_encoder.steps = 100
-        last_a_output_steps = 100
-        current_a_output = 10.0
-        logger.info("A. Output reset to 10.0 mA!")
 
 # API endpoints for V. Output
 @app.route('/api/v_output', methods=['GET'])
@@ -456,25 +545,70 @@ def set_v_output():
                 return jsonify({'error': str(e)}), 400
         return jsonify({'error': 'No value provided'}), 400
 
-@app.route('/api/v_output/reset', methods=['POST'])
-def api_reset_v_output():
+# New API endpoint for sensitivity controls
+@app.route('/api/sensitivity', methods=['GET'])
+def get_sensitivity():
     with encoder_lock:
-        # Check if locked
-        if is_locked or current_mode == 5:  # 5 = DOO mode
-            return jsonify({'error': 'Device is locked or in DOO mode'}), 403
-            
-        reset_v_output()
-        return jsonify({'success': True, 'value': current_v_output})
+        return jsonify({
+            'a_sensitivity': a_sensitivity,
+            'v_sensitivity': v_sensitivity,
+            'active_control': active_control
+        })
 
-# Function to reset the V. Output to default
-def reset_v_output():
-    global current_v_output, last_v_output_steps
+@app.route('/api/sensitivity/set', methods=['POST'])
+def set_sensitivity():
+    global a_sensitivity, v_sensitivity, active_control
     
     with encoder_lock:
-        v_output_encoder.steps = 100
-        last_v_output_steps = 100
-        current_v_output = 10.0
-        logger.info("V. Output reset to 10.0 mA!")
+        # Check if locked
+        if is_locked:
+            return jsonify({'error': 'Device is locked'}), 403
+            
+        data = request.json
+        updated = False
+        
+        if 'a_sensitivity' in data:
+            try:
+                new_value = float(data['a_sensitivity'])
+                if new_value == 0 or min_a_sensitivity <= new_value <= max_a_sensitivity:
+                    a_sensitivity = new_value
+                    updated = True
+                else:
+                    return jsonify({'error': f'A sensitivity value out of range ({min_a_sensitivity}-{max_a_sensitivity} or 0)'}), 400
+            except Exception as e:
+                logger.error(f"Error setting A sensitivity: {e}")
+                return jsonify({'error': str(e)}), 400
+        
+        if 'v_sensitivity' in data:
+            try:
+                new_value = float(data['v_sensitivity'])
+                if new_value == 0 or min_v_sensitivity <= new_value <= max_v_sensitivity:
+                    v_sensitivity = new_value
+                    updated = True
+                else:
+                    return jsonify({'error': f'V sensitivity value out of range ({min_v_sensitivity}-{max_v_sensitivity} or 0)'}), 400
+            except Exception as e:
+                logger.error(f"Error setting V sensitivity: {e}")
+                return jsonify({'error': str(e)}), 400
+        
+        if 'active_control' in data:
+            new_control = data['active_control']
+            if new_control in ['none', 'a_sensitivity', 'v_sensitivity']:
+                active_control = new_control
+                updated = True
+                logger.info(f"Active control set to: {active_control}")
+            else:
+                return jsonify({'error': 'Invalid active control value'}), 400
+        
+        if updated:
+            return jsonify({
+                'success': True,
+                'a_sensitivity': a_sensitivity,
+                'v_sensitivity': v_sensitivity,
+                'active_control': active_control
+            })
+        else:
+            return jsonify({'error': 'No valid parameters provided'}), 400
 
 # API endpoint for setting mode
 @app.route('/api/mode/set', methods=['POST'])
@@ -497,7 +631,8 @@ def set_mode():
                     
                     # If setting to DOO mode (5), apply emergency settings
                     if new_mode == 5:
-                        reset_rate()  # Set rate to 80 ppm
+                        rate_encoder.steps = 80
+                        current_rate = 80
                         current_a_output = 20.0  # Set A output to 20 mA
                         current_v_output = 25.0  # Set V output to 25 mA
                         logger.info("DOO Emergency mode activated with preset values")
@@ -525,6 +660,9 @@ def health_check():
                 'v_output': current_v_output,
                 'locked': is_locked,
                 'mode': current_mode,
+                'a_sensitivity': a_sensitivity,
+                'v_sensitivity': v_sensitivity,
+                'active_control': active_control,
                 'buttons': {
                     'up_pressed': up_button_pressed,
                     'down_pressed': down_button_pressed,
@@ -569,6 +707,9 @@ def get_hardware_info():
                     'v_output_encoder': {
                         'rotation_count': v_output_encoder.steps
                     },
+                    'mode_output_encoder': {
+                        'rotation_count': mode_output_encoder.steps
+                    },
                     'buttons': {
                         'up_pressed': up_button_pressed,
                         'down_pressed': down_button_pressed,
@@ -581,32 +722,6 @@ def get_hardware_info():
         logger.error(f"Error getting hardware info: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# Additional status endpoint for debugging
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    with encoder_lock:
-        return jsonify({
-            'status': 'ok',
-            'hardware_initialized': True,
-            'uptime': time.time(),
-            'rate': current_rate,
-            'a_output': current_a_output,
-            'v_output': current_v_output,
-            'locked': is_locked,
-            'mode': current_mode,
-            'encoders': {
-                'rate_steps': rate_encoder.steps,
-                'a_output_steps': a_output_encoder.steps,
-                'v_output_steps': v_output_encoder.steps
-            }
-        })
-
-# Error handling for all endpoints
-@app.errorhandler(Exception)
-def handle_error(e):
-    logger.error(f"Unhandled error: {e}")
-    return jsonify({'status': 'error', 'message': str(e)}), 500
-
 # Cleanup function to properly close all hardware connections
 def cleanup():
     logger.info("Cleaning up hardware resources...")
@@ -614,6 +729,7 @@ def cleanup():
         rate_encoder.close()
         a_output_encoder.close()
         v_output_encoder.close()
+        mode_output_encoder.close()
         lock_button.close()
         up_button.close()
         down_button.close()
@@ -623,17 +739,12 @@ def cleanup():
         logger.error(f"Error during cleanup: {e}")
 
 if __name__ == '__main__':
-    # Set initial LED state based on lock state
-    # if is_locked:
-    #     # lock_led.on()
-    # else:
-    #     # lock_led.off()
-    
     try:
         logger.info("Pacemaker Server Started")
         logger.info(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
         logger.info(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
         logger.info(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
+        logger.info(f"Mode Output encoder on pins CLK=8, DT=7 (initial value: {current_mode_output})")
         logger.info(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
         logger.info(f"Up button on pin GPIO 26")
         logger.info(f"Down button on pin GPIO 14")
@@ -648,4 +759,4 @@ if __name__ == '__main__':
         logger.error(f"Error during server operation: {e}")
     finally:
         cleanup()
-        logger.info("Server shutdown complete")
+        logger.info("Server shutdown complete").0

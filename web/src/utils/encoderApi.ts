@@ -6,6 +6,9 @@ export interface ApiStatus {
   v_output?: number;
   locked?: boolean;
   mode?: number;
+  a_sensitivity?: number;
+  v_sensitivity?: number;
+  active_control?: string;
   buttons?: {
     up_pressed?: boolean;
     down_pressed?: boolean;
@@ -20,6 +23,9 @@ export interface ApiStatus {
       rotation_count?: number;
     };
     v_output_encoder?: {
+      rotation_count?: number;
+    };
+    mode_output_encoder?: {
       rotation_count?: number;
     };
     buttons?: {
@@ -37,6 +43,8 @@ export interface EncoderControlData {
   v_output?: number;
   locked?: boolean;
   mode?: number;
+  a_sensitivity?: number;
+  v_sensitivity?: number;
   active_control?: string;
 }
 
@@ -189,6 +197,33 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
       );
     }
 
+    // Handle sensitivity updates
+    if (data.a_sensitivity !== undefined || data.v_sensitivity !== undefined || data.active_control !== undefined) {
+      const sensitivityData: any = {};
+      
+      if (data.a_sensitivity !== undefined) {
+        sensitivityData.a_sensitivity = data.a_sensitivity;
+      }
+      
+      if (data.v_sensitivity !== undefined) {
+        sensitivityData.v_sensitivity = data.v_sensitivity;
+      }
+      
+      if (data.active_control !== undefined) {
+        sensitivityData.active_control = data.active_control;
+      }
+      
+      if (Object.keys(sensitivityData).length > 0) {
+        promises.push(
+          fetchWithTimeout(`${getBaseUrl()}/sensitivity/set`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sensitivityData),
+          }).then(handleApiError)
+        );
+      }
+    }
+
     if (data.mode !== undefined) {
       promises.push(
         fetchWithTimeout(`${getBaseUrl()}/mode/set`, {
@@ -248,6 +283,32 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
+// Get the current sensitivity settings
+export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensitivity: number, active_control: string} | null> => {
+  try {
+    const response = await fetchWithTimeout(`${getBaseUrl()}/sensitivity`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        a_sensitivity: data.a_sensitivity,
+        v_sensitivity: data.v_sensitivity,
+        active_control: data.active_control
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting sensitivity settings:', error);
+    consecutiveFailures++;
+    return null;
+  }
+};
+
 // Start polling the encoder API with error recovery
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
@@ -300,7 +361,10 @@ export const startEncoderPolling = (
           a_output: status.a_output,
           v_output: status.v_output,
           locked: status.locked,
-          mode: status.mode
+          mode: status.mode,
+          a_sensitivity: status.a_sensitivity,
+          v_sensitivity: status.v_sensitivity,
+          active_control: status.active_control
         };
         
         onDataUpdate(controlData);
