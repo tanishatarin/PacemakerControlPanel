@@ -126,9 +126,19 @@ const ControlPanel: React.FC = () => {
     }
     
     setPendingModeIndex(newIndex);
-    // Do NOT set selectedModeIndex here - only update the pending mode
     
-  }, [isLocked, showDDDSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
+    // Update the selected mode index immediately to fix header display
+    // When we're in the mode selection screen (not in settings screens)
+    if (!showDDDSettings && !showVVISettings && !showDOOSettings) {
+      setSelectedModeIndex(newIndex);
+      
+      // If connected to hardware, update mode there as well
+      if (encoderConnected) {
+        updateControls({ mode: newIndex });
+      }
+    }
+    
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, encoderConnected, handleLockError, resetAutoLockTimer]);
 
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
@@ -136,6 +146,15 @@ const ControlPanel: React.FC = () => {
     
     // If we're in a settings screen, go back to the mode selection
     if (showDDDSettings || showVVISettings || showDOOSettings) {
+      const currentMode = modes[selectedModeIndex];
+      
+      // Special case: When exiting DOO mode, switch to DDD mode
+      if (currentMode === 'DOO') {
+        const dddIndex = modes.indexOf('DDD');
+        setSelectedModeIndex(dddIndex);
+        setPendingModeIndex(dddIndex);
+      }
+      
       setShowDDDSettings(false);
       setShowVVISettings(false);
       setShowDOOSettings(false);
@@ -174,7 +193,7 @@ const ControlPanel: React.FC = () => {
     if (showAsyncMessage) {
       setShowAsyncMessage(false);
     }
-  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, selectedModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
 
   // Check encoder connection on startup
   useEffect(() => {
@@ -443,7 +462,8 @@ const ControlPanel: React.FC = () => {
       updateControls({
         rate: 80,
         a_output: 20.0,
-        v_output: 25.0
+        v_output: 25.0,
+        mode: dooIndex // Add mode update to ensure hardware is synchronized
       });
     }
   }, [resetAutoLockTimer, modes, encoderConnected]);
@@ -633,6 +653,14 @@ const ControlPanel: React.FC = () => {
               onClick={() => {
                 if (!isLocked) {
                   setPendingModeIndex(index);
+                  
+                  // Also update the selected mode index immediately to fix header display
+                  setSelectedModeIndex(index);
+                  
+                  // If connected to hardware, update mode there as well
+                  if (encoderConnected) {
+                    updateControls({ mode: index });
+                  }
                 } else {
                   handleLockError();
                 }
