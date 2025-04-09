@@ -117,8 +117,8 @@ def handle_emergency_button():
 def update_rate():
     global current_rate
     
-    # Skip updating if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
+    # Skip updating if locked, but allow in DOO mode
+    if is_locked:
         return
         
     current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
@@ -140,8 +140,8 @@ def get_output_step_size(value):
 def update_a_output():
     global current_a_output, last_a_output_steps
     
-    # Skip updating if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
+    # Skip updating if locked, but allow in DOO mode
+    if is_locked:
         return
     
     # Get current steps from encoder
@@ -177,8 +177,8 @@ def update_a_output():
 def update_v_output():
     global current_v_output, last_v_output_steps
     
-    # Skip updating if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
+    # Skip updating if locked, but allow in DOO mode
+    if is_locked:
         return
     
     # Get current steps from encoder
@@ -209,6 +209,7 @@ def update_v_output():
         last_v_output_steps = current_steps
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
+
 
 # Function to toggle lock state
 def toggle_lock():
@@ -261,12 +262,13 @@ def get_rate():
         'max': max_rate
     })
 
+# API endpoints for Rate
 @app.route('/api/rate/set', methods=['POST'])
 def set_rate():
     global current_rate
-    # Check if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
-        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
+    # Check if locked, but allow in DOO mode
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
         
     data = request.json
     if 'value' in data:
@@ -305,9 +307,9 @@ def get_a_output():
 @app.route('/api/a_output/set', methods=['POST'])
 def set_a_output():
     global current_a_output, last_a_output_steps
-    # Check if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
-        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
+    # Check if locked, but allow in DOO mode
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
         
     data = request.json
     if 'value' in data:
@@ -349,12 +351,13 @@ def get_v_output():
         'max': max_v_output
     })
 
+
 @app.route('/api/v_output/set', methods=['POST'])
 def set_v_output():
     global current_v_output, last_v_output_steps
-    # Check if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
-        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
+    # Check if locked, but allow in DOO mode
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
         
     data = request.json
     if 'value' in data:

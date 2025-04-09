@@ -69,15 +69,10 @@ const ControlPanel: React.FC = () => {
   const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
-  
-  // Get if controls should be locked (device locked or in DOO mode)
+
   const isControlsLocked = useCallback(() => {
-    return isLocked || modes[selectedModeIndex] === 'DOO';
-  }, [isLocked, modes, selectedModeIndex]);
-  
-  // const isControlsLocked = useCallback(() => {
-  //   return isLocked; // Only check for the lock state, not the mode
-  // }, [isLocked]);
+    return isLocked; // Only check for the lock state, not the mode
+  }, [isLocked]);
 
   // Show error when trying to adjust while locked
   const handleLockError = useCallback(() => {
@@ -121,6 +116,11 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
+    // If in DOO settings, don't allow navigation to change mode
+    if (showDOOSettings || showVVISettings || showDDDSettings) {
+      return;
+    }
+    
     // Otherwise handle regular mode navigation
     let newIndex;
     if (direction === 'up') {
@@ -130,9 +130,8 @@ const ControlPanel: React.FC = () => {
     }
     
     setPendingModeIndex(newIndex);
-    // Do NOT set selectedModeIndex here - only update the pending mode
     
-  }, [isLocked, showDDDSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
 
   // Memoize the handleLeftArrowPress function
   const handleLeftArrowPress = useCallback(() => {
