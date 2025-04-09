@@ -6,6 +6,9 @@ export interface ApiStatus {
   v_output?: number;
   locked?: boolean;
   mode?: number;
+  a_sensitivity?: number;
+  v_sensitivity?: number;
+  active_control?: string;
   buttons?: {
     up_pressed?: boolean;
     down_pressed?: boolean;
@@ -31,14 +34,6 @@ export interface ApiStatus {
       left_pressed?: boolean;
       emergency_pressed?: boolean;
     };
-    sensitivity?: {
-      value: number;
-      type: string;
-    };
-  };
-  sensitivity?: {
-    value: number;
-    type: string;
   };
 }
 
@@ -48,11 +43,9 @@ export interface EncoderControlData {
   v_output?: number;
   locked?: boolean;
   mode?: number;
+  a_sensitivity?: number;
+  v_sensitivity?: number;
   active_control?: string;
-  sensitivity?: {
-    value: number;
-    type: string;
-  };
 }
 
 // Base URL for API calls
@@ -115,6 +108,7 @@ export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
 };
 
 // Update control values on the hardware
+// Update control values on the hardware
 export const updateControls = async (data: EncoderControlData): Promise<void> => {
   try {
     const promises = [];
@@ -147,6 +141,33 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
           body: JSON.stringify({ value: data.v_output }),
         }).then(handleApiError)
       );
+    }
+
+    // Handle sensitivity updates
+    if (data.a_sensitivity !== undefined || data.v_sensitivity !== undefined || data.active_control !== undefined) {
+      const sensitivityData: any = {};
+      
+      if (data.a_sensitivity !== undefined) {
+        sensitivityData.a_sensitivity = data.a_sensitivity;
+      }
+      
+      if (data.v_sensitivity !== undefined) {
+        sensitivityData.v_sensitivity = data.v_sensitivity;
+      }
+      
+      if (data.active_control !== undefined) {
+        sensitivityData.active_control = data.active_control;
+      }
+      
+      if (Object.keys(sensitivityData).length > 0) {
+        promises.push(
+          fetch(`${getBaseUrl()}/sensitivity/set`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sensitivityData),
+          }).then(handleApiError)
+        );
+      }
     }
 
     if (data.mode !== undefined) {
@@ -206,10 +227,9 @@ export const getLockState = async (): Promise<boolean | null> => {
 };
 
 
-// Add this function to get sensitivity values with debugging
-export const getSensitivity = async (): Promise<{value: number, type: string} | null> => {
+// Get the current sensitivity settings
+export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensitivity: number, active_control: string} | null> => {
   try {
-    console.log("Fetching sensitivity from hardware...");
     const response = await fetch(`${getBaseUrl()}/sensitivity`, {
       method: 'GET',
       headers: {
@@ -219,57 +239,28 @@ export const getSensitivity = async (): Promise<{value: number, type: string} | 
     
     if (response.ok) {
       const data = await response.json();
-      console.log("Received sensitivity data:", data);
       return {
-        value: data.value,
-        type: data.type
+        a_sensitivity: data.a_sensitivity,
+        v_sensitivity: data.v_sensitivity,
+        active_control: data.active_control
       };
-    } else {
-      console.error("Failed to get sensitivity - server responded with:", response.status);
     }
-    
     return null;
   } catch (error) {
-    console.error('Error getting sensitivity:', error);
+    console.error('Error getting sensitivity settings:', error);
     return null;
-  }
-};
-
-// Update sensitivity with better debugging
-export const updateSensitivity = async (value: number, type: string): Promise<void> => {
-  try {
-    console.log(`Sending sensitivity update to hardware: ${type} = ${value}mV`);
-    const response = await fetch(`${getBaseUrl()}/sensitivity/set`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value, type }),
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Hardware sensitivity update successful:", data);
-    } else {
-      console.error("Failed to update sensitivity - server responded with:", response.status);
-      const errorText = await response.text();
-      console.error("Error details:", errorText);
-    }
-  } catch (error) {
-    console.error('Error updating sensitivity:', error);
-    throw error;
   }
 };
 
 
 // Add to the polling function to ensure hardware emergency button works
 export const startEncoderPolling = (
-    onDataUpdate: (data: EncoderControlData) => void,
-    onStatusUpdate: (status: ApiStatus) => void,
-    pollInterval = 100,
-    ignoreUpdateSources: string[] = []
-  ) => {
-    let isPolling = true;
-    let lastSensitivityValue = 0;
-    let lastSensitivityType = "";
+  onDataUpdate: (data: EncoderControlData) => void,
+  onStatusUpdate: (status: ApiStatus) => void,
+  pollInterval = 100,
+  ignoreUpdateSources: string[] = []
+) => {
+  let isPolling = true;
   
   const pollHealth = async () => {
     if (!isPolling) return;
@@ -290,26 +281,8 @@ export const startEncoderPolling = (
           mode: status.mode
         };
         
-        // Handle sensitivity data with explicit debugging
-        const hardwareSensitivity = status.hardware?.sensitivity;
-        if (hardwareSensitivity) {
-          // Check if sensitivity has changed
-          if (hardwareSensitivity.value !== lastSensitivityValue || 
-              hardwareSensitivity.type !== lastSensitivityType) {
-            console.log(`Hardware sensitivity changed: ${hardwareSensitivity.type} = ${hardwareSensitivity.value}mV`);
-            lastSensitivityValue = hardwareSensitivity.value;
-            lastSensitivityType = hardwareSensitivity.type;
-          }
-          
-          // Add sensitivity to control data
-          controlData.sensitivity = {
-            value: hardwareSensitivity.value,
-            type: hardwareSensitivity.type
-          };
-        }
-        
         onDataUpdate(controlData);
-          
+        
         // Check for button presses
         if (status.buttons) {
           // Handle up button press

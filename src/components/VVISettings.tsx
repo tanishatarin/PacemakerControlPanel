@@ -5,6 +5,7 @@ interface VVISettingsProps {
   onVSensitivityChange: (value: number) => void;
   onBack: () => void;
   isLocked: boolean;
+  encoderConnected?: boolean; // Add this prop
 }
 
 const VVISettings: React.FC<VVISettingsProps> = ({

@@ -16,6 +16,7 @@ interface DDDSettingsProps {
   isLocked: boolean;
   selectedSetting?: 'aSensitivity' | 'vSensitivity';
   onNavigate?: (direction: 'up' | 'down') => void;
+  encoderConnected?: boolean; // Add this prop
 }
 
 const DDDSettings: React.FC<DDDSettingsProps> = ({
