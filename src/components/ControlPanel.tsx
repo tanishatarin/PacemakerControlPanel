@@ -134,16 +134,25 @@ const ControlPanel: React.FC = () => {
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
     
-    // If we're in a settings screen, go back to the mode selection
-    if (showDDDSettings || showVVISettings || showDOOSettings) {
+    // If we're in DOO settings, do not allow exiting via left arrow
+    if (showDOOSettings) {
+      return;
+    }
+    
+    // If we're in other settings screens, go back to the mode selection
+    if (showDDDSettings || showVVISettings) {
       setShowDDDSettings(false);
       setShowVVISettings(false);
-      setShowDOOSettings(false);
       return;
     }
     
     if (isLocked) {
       handleLockError();
+      return;
+    }
+    
+    // Prevent setting mode to DOO via left arrow
+    if (modes[pendingModeIndex] === 'DOO') {
       return;
     }
     
@@ -154,20 +163,8 @@ const ControlPanel: React.FC = () => {
     // Check if mode requires special settings screen
     if (newMode === 'DDD') {
       setShowDDDSettings(true);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
     } else if (newMode === 'VVI') {
       setShowVVISettings(true);
-      setShowDDDSettings(false);
-      setShowDOOSettings(false);
-    } else if (newMode === 'DOO') {
-      setShowDOOSettings(true);
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-    } else {
-      setShowDDDSettings(false);
-      setShowVVISettings(false);
-      setShowDOOSettings(false);
     }
     
     // If exiting async message mode
@@ -423,30 +420,45 @@ const ControlPanel: React.FC = () => {
   const handleEmergencyMode = useCallback(() => {
     resetAutoLockTimer();
     
-    // Set emergency parameters
-    setRate(80);
-    setAOutput(20.0);
-    setVOutput(25.0);
-    
-    // Set to DOO mode
-    const dooIndex = modes.indexOf('DOO');
-    setSelectedModeIndex(dooIndex);
-    setPendingModeIndex(dooIndex);
-    
-    // Show DOO settings
-    setShowDOOSettings(true);
-    setShowDDDSettings(false);
-    setShowVVISettings(false);
-    
-    // If connected to hardware, send emergency mode settings
-    if (encoderConnected) {
-      updateControls({
-        rate: 80,
-        a_output: 20.0,
-        v_output: 25.0
-      });
+    // Toggle DOO mode
+    if (showDOOSettings) {
+      // If already in DOO mode, exit to previous mode
+      setShowDOOSettings(false);
+      
+      // Reset controls to previous values (optional)
+      // You could store previous values in refs to restore them
+      
+      console.log("Exiting DOO emergency mode");
+    } else {
+      // Enter DOO mode
+      // Set emergency parameters
+      setRate(80);
+      setAOutput(20.0);
+      setVOutput(25.0);
+      
+      // Set to DOO mode
+      const dooIndex = modes.indexOf('DOO');
+      setSelectedModeIndex(dooIndex);
+      setPendingModeIndex(dooIndex);
+      
+      // Show DOO settings
+      setShowDOOSettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      
+      // If connected to hardware, send emergency mode settings
+      if (encoderConnected) {
+        updateControls({
+          rate: 80,
+          a_output: 20.0,
+          v_output: 25.0,
+          mode: dooIndex  // Send mode index to hardware
+        });
+      }
+      
+      console.log("Entering DOO emergency mode");
     }
-  }, [resetAutoLockTimer, modes, encoderConnected]);
+  }, [resetAutoLockTimer, modes, encoderConnected, showDOOSettings]);
 
   // Set up listener for hardware up button press
   useEffect(() => {
@@ -631,6 +643,12 @@ const ControlPanel: React.FC = () => {
             <button
               key={mode}
               onClick={() => {
+                // Special handling for DOO mode - show emergency content
+                if (mode === 'DOO') {
+                  handleEmergencyMode();
+                  return;
+                }
+                
                 if (!isLocked) {
                   setPendingModeIndex(index);
                 } else {
@@ -649,7 +667,7 @@ const ControlPanel: React.FC = () => {
             </button>
           ))}
         </div>
-      );
+      );      
     }
   };
 
@@ -676,9 +694,13 @@ const ControlPanel: React.FC = () => {
       {/* Emergency Mode Button */}
       <button
         onClick={handleEmergencyMode}
-        className="w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors"
+        className={`w-full mb-4 ${
+          showDOOSettings 
+            ? 'bg-blue-500 hover:bg-blue-600' 
+            : 'bg-red-500 hover:bg-red-600'
+        } text-white py-2 px-4 rounded-xl transition-colors`}
       >
-        DOO Emergency Mode
+        {showDOOSettings ? 'Exit Emergency Mode' : 'DOO Emergency Mode'}
       </button>
 
       {/* Main Controls */}

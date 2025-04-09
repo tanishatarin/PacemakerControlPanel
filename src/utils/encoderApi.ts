@@ -190,7 +190,7 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
-// Start polling the encoder API
+// Add to the polling function to ensure hardware emergency button works
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
