@@ -27,6 +27,8 @@ export interface ApiStatus {
       down_pressed?: boolean;
       left_pressed?: boolean;
       emergency_pressed?: boolean;
+      mode_output_up?: boolean;
+      mode_output_down?: boolean;
     };
   };
 }

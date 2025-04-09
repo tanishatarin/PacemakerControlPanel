@@ -15,6 +15,7 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 # Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
+# 
 mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
@@ -210,6 +211,29 @@ def update_v_output():
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
+# Track last encoder position for mode settings
+last_mode_output_steps = 100
+
+def update_mode_output_settings():
+    global last_mode_output_steps
+
+    # Get current steps from encoder
+    current_steps = mode_output_encoder.steps
+    
+    # Calculate the difference in steps
+    diff = current_steps - last_mode_output_steps
+    
+    # Dispatch an event based on the rotation direction
+    if diff != 0:
+        # Invert the direction since we want CCW to increase, CW to decrease
+        event_type = 'mode_output_down' if diff > 0 else 'mode_output_up'
+        print(f"Mode output encoder rotated: {event_type}")
+        
+        # Update last steps
+        last_mode_output_steps = current_steps
+
+# Attach event listener to mode output encoder
+mode_output_encoder.when_rotated = update_mode_output_settings
 
 # Function to toggle lock state
 def toggle_lock():
