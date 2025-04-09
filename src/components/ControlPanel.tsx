@@ -511,63 +511,63 @@ const ControlPanel: React.FC = () => {
     };
   }, [handleLeftArrowPress]);
 
-    // Set up listener for hardware mode output encoder
-    useEffect(() => {
-      const handleModeOutputUp = () => {
-        console.log("Hardware mode output up detected");
-        // Check if we're in DDD or VVI settings and handle navigation
-        if (showDDDSettings) {
-          // If in DDD settings, switch between A and V sensitivity
-          setSelectedDDDSetting(prev => 
-            prev === 'aSensitivity' ? 'vSensitivity' : 'aSensitivity'
-          );
-        } else if (showVVISettings) {
-          // In VVI settings, there's only one setting to adjust
-          console.log("Mode output in VVI settings - no navigation needed");
-        }
-      };
-  
-      const handleModeOutputDown = () => {
-        console.log("Hardware mode output down detected");
-        // Same logic as handleModeOutputUp, but in reverse direction
-        if (showDDDSettings) {
-          // If in DDD settings, switch between A and V sensitivity
-          setSelectedDDDSetting(prev => 
-            prev === 'aSensitivity' ? 'vSensitivity' : 'aSensitivity'
-          );
-        } else if (showVVISettings) {
-          // In VVI settings, there's only one setting to adjust
-          console.log("Mode output in VVI settings - no navigation needed");
-        }
-      };
-  
-      // Add event listeners for the custom events
-      window.addEventListener('hardware-mode_output-up', handleModeOutputUp);
-      window.addEventListener('hardware-mode_output-down', handleModeOutputDown);
-  
-      // Clean up
-      return () => {
-        window.removeEventListener('hardware-mode_output-up', handleModeOutputUp);
-        window.removeEventListener('hardware-mode_output-down', handleModeOutputDown);
-      };
-    }, [showDDDSettings, showVVISettings]);
+   // Set up listener for hardware mode output encoder
+   useEffect(() => {
+    const handleModeOutputUp = () => {
+      console.log("Hardware mode output up detected");
+      // Check if we're in DDD or VVI settings and handle navigation
+      if (showDDDSettings) {
+        // If in DDD settings, switch between A and V sensitivity
+        setSelectedDDDSetting(prev => 
+          prev === 'aSensitivity' ? 'vSensitivity' : 'aSensitivity'
+        );
+      } else if (showVVISettings) {
+        // In VVI settings, there's only one setting to adjust
+        console.log("Mode output in VVI settings - no navigation needed");
+      }
+    };
+
+    const handleModeOutputDown = () => {
+      console.log("Hardware mode output down detected");
+      // Same logic as handleModeOutputUp, but in reverse direction
+      if (showDDDSettings) {
+        // If in DDD settings, switch between A and V sensitivity
+        setSelectedDDDSetting(prev => 
+          prev === 'aSensitivity' ? 'vSensitivity' : 'aSensitivity'
+        );
+      } else if (showVVISettings) {
+        // In VVI settings, there's only one setting to adjust
+        console.log("Mode output in VVI settings - no navigation needed");
+      }
+    };
+
+    // Add event listeners for the custom events
+    window.addEventListener('hardware-mode_output-up', handleModeOutputUp);
+    window.addEventListener('hardware-mode_output-down', handleModeOutputDown);
+
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-mode_output-up', handleModeOutputUp);
+      window.removeEventListener('hardware-mode_output-down', handleModeOutputDown);
+    };
+  }, [showDDDSettings, showVVISettings]);
 
 
-    // Set up listener for hardware emergency button press
-    useEffect(() => {
-      const handleHardwareEmergencyButtonPress = () => {
-        console.log("Hardware emergency button press detected");
-        handleEmergencyMode();
-      };
+  // Set up listener for hardware emergency button press
+  useEffect(() => {
+    const handleHardwareEmergencyButtonPress = () => {
+      console.log("Hardware emergency button press detected");
+      handleEmergencyMode();
+    };
 
-      // Add event listener for the custom event
-      window.addEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyButtonPress);
+    // Add event listener for the custom event
+    window.addEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyButtonPress);
 
-      // Clean up
-      return () => {
-        window.removeEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyButtonPress);
-      };
-    }, [handleEmergencyMode]);
+    // Clean up
+    return () => {
+      window.removeEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyButtonPress);
+    };
+  }, [handleEmergencyMode]);
 
   // Add a dedicated hook to synchronize lock state from hardware to UI
   useEffect(() => {

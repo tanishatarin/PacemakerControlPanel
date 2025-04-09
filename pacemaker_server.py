@@ -15,7 +15,7 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 # Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
-# 
+# Clock 8, DT 7 for the mode output encoder
 mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
