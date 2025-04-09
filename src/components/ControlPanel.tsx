@@ -75,6 +75,10 @@ const ControlPanel: React.FC = () => {
     return isLocked || modes[selectedModeIndex] === 'DOO';
   }, [isLocked, modes, selectedModeIndex]);
   
+  // const isControlsLocked = useCallback(() => {
+  //   return isLocked; // Only check for the lock state, not the mode
+  // }, [isLocked]);
+
   // Show error when trying to adjust while locked
   const handleLockError = useCallback(() => {
     setShowLockMessage(true);
@@ -677,7 +681,7 @@ const ControlPanel: React.FC = () => {
       {/* Battery and Mode Header */}
       <BatteryHeader
         batteryLevel={batteryLevel}
-        selectedMode={modes[selectedModeIndex]}
+        selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
         isLocked={isLocked}
         onBatteryChange={setBatteryLevel}
       />
@@ -691,14 +695,11 @@ const ControlPanel: React.FC = () => {
       </div>
     )}
 
+
       {/* Emergency Mode Button */}
       <button
         onClick={handleEmergencyMode}
-        className={`w-full mb-4 ${
-          showDOOSettings 
-            ? 'bg-blue-500 hover:bg-blue-600' 
-            : 'bg-red-500 hover:bg-red-600'
-        } text-white py-2 px-4 rounded-xl transition-colors`}
+        className="w-full mb-4 bg-red-500 text-white py-2 px-4 rounded-xl hover:bg-red-600 transition-colors"
       >
         {showDOOSettings ? 'Exit Emergency Mode' : 'DOO Emergency Mode'}
       </button>
