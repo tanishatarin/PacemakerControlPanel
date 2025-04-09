@@ -6,15 +6,15 @@ export interface ApiStatus {
   v_output?: number;
   locked?: boolean;
   mode?: number;
-  a_sensitivity?: number;
-  v_sensitivity?: number;
-  active_control?: string;
   buttons?: {
     up_pressed?: boolean;
     down_pressed?: boolean;
     left_pressed?: boolean;
     emergency_pressed?: boolean;
   };
+  a_sensitivity?: number;
+  v_sensitivity?: number;
+  active_control?: string;
   hardware?: {
     rate_encoder?: {
       rotation_count?: number;
@@ -107,7 +107,6 @@ export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
   }
 };
 
-// Update control values on the hardware
 // Update control values on the hardware
 export const updateControls = async (data: EncoderControlData): Promise<void> => {
   try {
@@ -278,7 +277,10 @@ export const startEncoderPolling = (
           a_output: status.a_output,
           v_output: status.v_output,
           locked: status.locked,
-          mode: status.mode
+          mode: status.mode,
+          a_sensitivity: status.a_sensitivity,
+          v_sensitivity: status.v_sensitivity,
+          active_control: status.active_control
         };
         
         onDataUpdate(controlData);

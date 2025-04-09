@@ -38,6 +38,9 @@ current_a_output = 10.0
 v_output_encoder.steps = 100  # 10.0 mA initially
 current_v_output = 10.0
 
+mode_output_encoder.steps = 50 # 5.0 mA initially
+current_mode_output = 5.0 
+
 # Lock state
 is_locked = False
 
@@ -53,6 +56,12 @@ max_a_output = 20.0
 
 min_v_output = 0.0
 max_v_output = 25.0
+
+min_a_sensitivity = 0.4  # mV
+max_a_sensitivity = 10.0  # mV
+
+min_v_sensitivity = 0.8  # mV
+max_v_sensitivity = 20.0  # mV
 
 # Track last encoder position for outputs
 last_a_output_steps = 100
@@ -70,124 +79,6 @@ last_left_press_time = 0
 
 emergency_button_pressed = False
 last_emergency_press_time = 0
-
-
-# Add these variables near the other global variables
-mode_output_encoder.steps = 50  # Middle position for encoder
-current_mode_output = 50
-last_mode_output_steps = 50
-
-# Current active control (used for the mode encoder)
-# Options: 'none', 'a_sensitivity', 'v_sensitivity'
-active_control = 'none'
-
-# Sensitivity values
-a_sensitivity = 0.5  # Default value (mV)
-v_sensitivity = 2.0  # Default value (mV)
-
-# Min/max values for sensitivities
-min_a_sensitivity = 0.4  # mV
-max_a_sensitivity = 10.0  # mV
-min_v_sensitivity = 0.8  # mV
-max_v_sensitivity = 20.0  # mV
-
-
-# Function to get step size for sensitivity values
-def get_sensitivity_step_size(value, is_a_sensitivity=True):
-    if is_a_sensitivity:
-        if value <= 1:
-            return 0.1
-        if value <= 2:
-            return 0.2
-        if value <= 5:
-            return 0.5
-        return 1.0
-    else:  # For V sensitivity
-        if value <= 1:
-            return 0.2
-        if value <= 3:
-            return 0.5
-        if value <= 10:
-            return 1.0
-        return 2.0
-
-# Function to update the current Mode Output value (for sensitivity controls)
-def update_mode_output():
-    global a_sensitivity, v_sensitivity, last_mode_output_steps, active_control
-    
-    # Skip updating if locked or in DOO mode or if no control is active
-    if is_locked or current_mode == 5 or active_control == 'none':
-        return
-    
-    # Get current steps from encoder
-    current_steps = mode_output_encoder.steps
-    
-    # Calculate the difference in steps
-    diff = current_steps - last_mode_output_steps
-    
-    # If there's a change in steps
-    if diff != 0:
-        # Handle A Sensitivity adjustment
-        if active_control == 'a_sensitivity':
-            # Get step size based on current value
-            step_size = get_sensitivity_step_size(a_sensitivity, True)
-            
-            # IMPORTANT: Invert the logic for sensitivity
-            # Clockwise (diff > 0) = decrease mV (increase sensitivity)
-            # Counter-clockwise (diff < 0) = increase mV (decrease sensitivity)
-            if diff > 0:
-                a_sensitivity -= step_size
-            else:
-                a_sensitivity += step_size
-            
-            # Bounds check
-            if a_sensitivity < min_a_sensitivity and a_sensitivity != 0:
-                a_sensitivity = min_a_sensitivity
-            elif a_sensitivity > max_a_sensitivity:
-                a_sensitivity = max_a_sensitivity
-            
-            # Special check for ASYNC mode
-            if a_sensitivity <= 0.001:
-                a_sensitivity = 0
-            
-            # Round to the nearest step size to prevent floating point errors
-            if a_sensitivity != 0:
-                a_sensitivity = round(a_sensitivity / step_size) * step_size
-            
-            print(f"A Sensitivity updated: {a_sensitivity} mV (step size: {step_size}, diff: {diff})")
-        
-        # Handle V Sensitivity adjustment
-        elif active_control == 'v_sensitivity':
-            # Get step size based on current value
-            step_size = get_sensitivity_step_size(v_sensitivity, False)
-            
-            # IMPORTANT: Invert the logic for sensitivity
-            # Clockwise (diff > 0) = decrease mV (increase sensitivity)
-            # Counter-clockwise (diff < 0) = increase mV (decrease sensitivity)
-            if diff > 0:
-                v_sensitivity -= step_size
-            else:
-                v_sensitivity += step_size
-            
-            # Bounds check
-            if v_sensitivity < min_v_sensitivity and v_sensitivity != 0:
-                v_sensitivity = min_v_sensitivity
-            elif v_sensitivity > max_v_sensitivity:
-                v_sensitivity = max_v_sensitivity
-            
-            # Special check for ASYNC mode
-            if v_sensitivity <= 0.001:
-                v_sensitivity = 0
-            
-            # Round to the nearest step size to prevent floating point errors
-            if v_sensitivity != 0:
-                v_sensitivity = round(v_sensitivity / step_size) * step_size
-            
-            print(f"V Sensitivity updated: {v_sensitivity} mV (step size: {step_size}, diff: {diff})")
-        
-        # Update the last steps
-        last_mode_output_steps = current_steps
-        
 
 def handle_down_button():
     global last_down_press_time, down_button_pressed
@@ -253,6 +144,25 @@ def get_output_step_size(value):
         return 0.5
     else:
         return 1.0
+
+# Function to get step size for sensitivity values
+def get_sensitivity_step_size(value, is_a_sensitivity=True):
+    if is_a_sensitivity:
+        if value <= 1:
+            return 0.1
+        if value <= 2:
+            return 0.2
+        if value <= 5:
+            return 0.5
+        return 1.0
+    else:  # For V sensitivity
+        if value <= 1:
+            return 0.2
+        if value <= 3:
+            return 0.5
+        if value <= 10:
+            return 1.0
+        return 2.0
 
 # Function to update the current A. Output value
 def update_a_output():
@@ -328,6 +238,66 @@ def update_v_output():
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
+# Updated function for the mode encoder that fixes the "sticking" issue
+def update_mode_output():
+    global a_sensitivity, v_sensitivity, active_control, current_mode_output
+    # Skip updating if locked or in DOO mode or if no control is active
+    if is_locked or current_mode == 5 or active_control == 'none':
+        return
+    
+    # Get raw steps directly from encoder
+    current_steps = mode_output_encoder.steps
+    current_mode_output = current_steps  # Update tracking variable
+    
+    # IMPORTANT: Make clockwise increase values and counter-clockwise decrease values
+    # This fixes the reversed direction issue
+    
+    if active_control == 'a_sensitivity':
+        # Create a direct mapping from encoder to sensitivity
+        # This ensures we won't get stuck due to state tracking issues
+        
+        # Map the raw encoder value to a sensitivity value range
+        # Normalize steps to be in range [0, 100]
+        normalized_steps = (current_steps % 100)
+        
+        # Map normalized steps to sensitivity range
+        # Note: Reversed calculation to fix the direction
+        if normalized_steps >= 95:  # Top 5% of range = ASYNC (0 mV)
+            new_sensitivity = 0
+        else:
+            # Map 0-95 to max_sensitivity down to min_sensitivity
+            # This way clockwise = more sensitive (lower mV value)
+            new_sensitivity = max_a_sensitivity - (normalized_steps / 95) * (max_a_sensitivity - min_a_sensitivity)
+            # Round to a reasonable step size to avoid tiny changes
+            step_size = get_sensitivity_step_size(new_sensitivity, True)
+            new_sensitivity = round(new_sensitivity / step_size) * step_size
+        
+        # Only log and update if there's an actual change
+        if abs(new_sensitivity - a_sensitivity) > 0.001:
+            # logger.info(f"A Sensitivity direct update: {a_sensitivity} -> {new_sensitivity} mV (steps={current_steps})")
+            a_sensitivity = new_sensitivity
+            
+    elif active_control == 'v_sensitivity':
+        # Same approach for V sensitivity
+        # Normalize steps to be in range [0, 100]
+        normalized_steps = (current_steps % 100)
+        
+        # Map normalized steps to sensitivity range
+        # Note: Reversed calculation to fix the direction
+        if normalized_steps >= 95:  # Top 5% of range = ASYNC (0 mV)
+            new_sensitivity = 0
+        else:
+            # Map 0-95 to max_sensitivity down to min_sensitivity
+            # This way clockwise = more sensitive (lower mV value)
+            new_sensitivity = max_v_sensitivity - (normalized_steps / 95) * (max_v_sensitivity - min_v_sensitivity)
+            # Round to a reasonable step size to avoid tiny changes
+            step_size = get_sensitivity_step_size(new_sensitivity, False)
+            new_sensitivity = round(new_sensitivity / step_size) * step_size
+        
+        # Only log and update if there's an actual change
+        if abs(new_sensitivity - v_sensitivity) > 0.001:
+            # logger.info(f"V Sensitivity direct update: {v_sensitivity} -> {new_sensitivity} mV (steps={current_steps})")
+            v_sensitivity = new_sensitivity
 
 # Function to toggle lock state
 def toggle_lock():
@@ -350,13 +320,13 @@ lock_button.when_released = toggle_lock  # Change from when_pressed to when_rele
 rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
+mode_output_encoder.when_rotated = update_mode_output
 lock_button.when_pressed = toggle_lock
 
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
 emergency_button.when_pressed = handle_emergency_button  # Use pressed for emergency instead of released
-mode_output_encoder.when_rotated = update_mode_output
 
 
 # API endpoints for Lock status
@@ -507,6 +477,114 @@ def reset_v_output():
     last_v_output_steps = 100
     current_v_output = 10.0
     print("V. Output reset to 10.0 mA!")
+    
+# New API endpoint for sensitivity controls
+@app.route('/api/sensitivity', methods=['GET'])
+def get_sensitivity():
+    return jsonify({
+        'a_sensitivity': a_sensitivity,
+        'v_sensitivity': v_sensitivity,
+        'active_control': active_control
+    })
+
+@app.route('/api/sensitivity/set', methods=['POST'])
+def set_sensitivity():
+    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder
+    
+    # Check if locked
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
+        
+    data = request.json
+    updated = False
+    
+    if 'a_sensitivity' in data:
+        try:
+            new_value = float(data['a_sensitivity'])
+            if new_value == 0 or min_a_sensitivity <= new_value <= max_a_sensitivity:
+                a_sensitivity = new_value
+                updated = True
+                
+                # If this sensitivity is currently being controlled, update encoder position
+                if active_control == 'a_sensitivity':
+                    # Map sensitivity to encoder position
+                    if new_value == 0:  # ASYNC mode
+                        mode_output_encoder.steps = 95
+                    else:
+                        normalized_pos = 95 * (max_a_sensitivity - new_value) / (max_a_sensitivity - min_a_sensitivity)
+                        mode_output_encoder.steps = int(normalized_pos)
+                
+            else:
+                return jsonify({'error': f'A sensitivity value out of range ({min_a_sensitivity}-{max_a_sensitivity} or 0)'}), 400
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+    
+    if 'v_sensitivity' in data:
+        try:
+            new_value = float(data['v_sensitivity'])
+            if new_value == 0 or min_v_sensitivity <= new_value <= max_v_sensitivity:
+                v_sensitivity = new_value
+                updated = True
+                
+                # If this sensitivity is currently being controlled, update encoder position
+                if active_control == 'v_sensitivity':
+                    # Map sensitivity to encoder position
+                    if new_value == 0:  # ASYNC mode
+                        mode_output_encoder.steps = 95
+                    else:
+                        normalized_pos = 95 * (max_v_sensitivity - new_value) / (max_v_sensitivity - min_v_sensitivity)
+                        mode_output_encoder.steps = int(normalized_pos)
+                
+            else:
+                return jsonify({'error': f'V sensitivity value out of range ({min_v_sensitivity}-{max_v_sensitivity} or 0)'}), 400
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
+    
+    if 'active_control' in data:
+        new_control = data['active_control']
+        old_control = active_control
+        
+        if new_control in ['none', 'a_sensitivity', 'v_sensitivity']:
+            active_control = new_control
+            updated = True
+            
+            # Important: Reset encoder position when changing active control
+            # This prevents jumps in values when switching between controls
+            if old_control != new_control:
+                if new_control == 'a_sensitivity':
+                    # Map current a_sensitivity to a normalized encoder position
+                    if a_sensitivity == 0:  # ASYNC mode
+                        mode_output_encoder.steps = 95
+                    else:
+                        normalized_pos = 95 * (max_a_sensitivity - a_sensitivity) / (max_a_sensitivity - min_a_sensitivity)
+                        mode_output_encoder.steps = int(normalized_pos)
+                
+                elif new_control == 'v_sensitivity':
+                    # Map current v_sensitivity to a normalized encoder position
+                    if v_sensitivity == 0:  # ASYNC mode
+                        mode_output_encoder.steps = 95
+                    else:
+                        normalized_pos = 95 * (max_v_sensitivity - v_sensitivity) / (max_v_sensitivity - min_v_sensitivity)
+                        mode_output_encoder.steps = int(normalized_pos)
+                
+                elif new_control == 'none':
+                    # Reset to middle position when no control is active
+                    mode_output_encoder.steps = 50
+            
+        else:
+            return jsonify({'error': 'Invalid active control value'}), 400
+    
+    if updated:
+        return jsonify({
+            'success': True,
+            'a_sensitivity': a_sensitivity,
+            'v_sensitivity': v_sensitivity,
+            'active_control': active_control
+        })
+    else:
+        return jsonify({'error': 'No valid parameters provided'}), 400
+
+
 
 # API endpoint for setting mode
 @app.route('/api/mode/set', methods=['POST'])
@@ -533,7 +611,7 @@ def set_mode():
             return jsonify({'error': 'Invalid mode value'}), 400
     return jsonify({'error': 'No mode provided'}), 400
 
-# Update the health check endpoint to include sensitivity information
+# health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
@@ -546,9 +624,6 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
-        'a_sensitivity': a_sensitivity,
-        'v_sensitivity': v_sensitivity, 
-        'active_control': active_control,
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
@@ -569,7 +644,7 @@ def health_check():
     
     return jsonify(status_data)
 
-# Update the hardware info endpoint to include the mode encoder
+# API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
 def get_hardware_info():
     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
@@ -586,8 +661,7 @@ def get_hardware_info():
                 'rotation_count': v_output_encoder.steps
             },
             'mode_output_encoder': {
-                'rotation_count': mode_output_encoder.steps,
-                'last_steps': last_mode_output_steps
+                'rotation_count': mode_output_encoder.steps
             },
             'buttons': {
                 'up_pressed': up_button_pressed,
@@ -597,77 +671,6 @@ def get_hardware_info():
             }
         }
     })
-
-
-# New API endpoint for sensitivity controls
-@app.route('/api/sensitivity', methods=['GET'])
-def get_sensitivity():
-    return jsonify({
-        'a_sensitivity': a_sensitivity,
-        'v_sensitivity': v_sensitivity,
-        'active_control': active_control
-    })
-
-@app.route('/api/sensitivity/set', methods=['POST'])
-def set_sensitivity():
-    global a_sensitivity, v_sensitivity, active_control, last_mode_output_steps
-    
-    # Check if locked
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
-        
-    data = request.json
-    updated = False
-    
-    if 'a_sensitivity' in data:
-        try:
-            new_value = float(data['a_sensitivity'])
-            if new_value == 0 or min_a_sensitivity <= new_value <= max_a_sensitivity:
-                a_sensitivity = new_value
-                updated = True
-            else:
-                return jsonify({'error': f'A sensitivity value out of range ({min_a_sensitivity}-{max_a_sensitivity} or 0)'}), 400
-        except Exception as e:
-            print(f"Error setting A sensitivity: {e}")
-            return jsonify({'error': str(e)}), 400
-    
-    if 'v_sensitivity' in data:
-        try:
-            new_value = float(data['v_sensitivity'])
-            if new_value == 0 or min_v_sensitivity <= new_value <= max_v_sensitivity:
-                v_sensitivity = new_value
-                updated = True
-            else:
-                return jsonify({'error': f'V sensitivity value out of range ({min_v_sensitivity}-{max_v_sensitivity} or 0)'}), 400
-        except Exception as e:
-            print(f"Error setting V sensitivity: {e}")
-            return jsonify({'error': str(e)}), 400
-    
-    if 'active_control' in data:
-        old_control = active_control
-        new_control = data['active_control']
-        
-        if new_control in ['none', 'a_sensitivity', 'v_sensitivity']:
-            active_control = new_control
-            updated = True
-            
-            # When changing active control, update last_mode_output_steps
-            # This prevents the encoder from getting confused
-            if old_control != new_control:
-                last_mode_output_steps = mode_output_encoder.steps
-                print(f"Changed active control from {old_control} to {new_control}, reset last_mode_output_steps")
-        else:
-            return jsonify({'error': 'Invalid active control value'}), 400
-    
-    if updated:
-        return jsonify({
-            'success': True,
-            'a_sensitivity': a_sensitivity,
-            'v_sensitivity': v_sensitivity,
-            'active_control': active_control
-        })
-    else:
-        return jsonify({'error': 'No valid parameters provided'}), 400
 
 
 if __name__ == '__main__':
@@ -681,6 +684,7 @@ if __name__ == '__main__':
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
+    print(f"Mode Output encoder on pins CLK=8, DT=7 (initial value: {current_mode_output})")
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")

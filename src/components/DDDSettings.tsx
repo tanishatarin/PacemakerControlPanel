@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { updateControls } from '../utils/encoderApi';
 
 // Interface for the DDD Settings component
 interface DDDSettingsProps {
@@ -16,7 +17,7 @@ interface DDDSettingsProps {
   isLocked: boolean;
   selectedSetting?: 'aSensitivity' | 'vSensitivity';
   onNavigate?: (direction: 'up' | 'down') => void;
-  encoderConnected?: boolean; // Add this prop
+  encoderConnected?: boolean;
 }
 
 const DDDSettings: React.FC<DDDSettingsProps> = ({
@@ -24,6 +25,7 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   onSettingsChange,
   isLocked,
   selectedSetting = 'aSensitivity',
+  encoderConnected = false
 }) => {
   const handleChange = (key: string, value: any) => {
     if (isLocked) return;
@@ -72,6 +74,29 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
     handleChange('vSensitivity', parseFloat(actualValue.toFixed(1)));
   };
 
+  // Effect to update hardware encoder active control based on selected setting
+  useEffect(() => {
+    if (encoderConnected) {
+      // Set active control based on selected setting
+      const controlType = selectedSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
+      const sensitivityValue = selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity;
+      
+      console.log(`Setting active control to ${controlType} with value ${sensitivityValue}`);
+      
+      // Update the hardware
+      updateControls({ 
+        active_control: controlType,
+        [controlType]: sensitivityValue
+      }).catch(err => console.error('Failed to set active control:', err));
+      
+      // Reset active control when component unmounts
+      return () => {
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      };
+    }
+  }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
+
   // Check if sensitivities are disabled
   const isASensitivityDisabled = settings.aSensitivity === 0;
   const isVSensitivityDisabled = settings.vSensitivity === 0;
@@ -84,85 +109,87 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
       
       <div className="p-3 space-y-4">
         {/* A Sensitivity */}
+        <div className={`transition-all ${selectedSetting === 'aSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
+          <div className="flex justify-between items-center mb-1">
+            <span className={`text-sm ${selectedSetting === 'aSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
+              {selectedSetting === 'aSensitivity' && "➤ "}A Sensitivity
+            </span>
+            <span className="text-sm font-medium">
+              {settings.aSensitivity === 0 ? "ASYNC" : `${settings.aSensitivity.toFixed(1)} mV`}
+            </span>
+          </div>
+          <div className="relative">
+            <div className="h-2 bg-gray-100 rounded-full">
+              <div 
+                className="absolute h-full rounded-full transition-all duration-150 ease-out"
+                style={{ 
+                  width: `${aValueToSlider(settings.aSensitivity)}%`,
+                  backgroundColor: selectedSetting === 'aSensitivity' ? "#3b82f6" : "#9ca3af" 
+                }}
+              />
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={aValueToSlider(settings.aSensitivity)}
+              onChange={handleASliderChange}
+              className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
+              disabled={isLocked || selectedSetting !== 'aSensitivity'} 
+            />
+          </div>
+          <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <span>10 mV</span>
+            <span>0.4 mV</span>
+          </div>
+        </div>
 
-<div className={`transition-all ${selectedSetting === 'aSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
-  <div className="flex justify-between items-center mb-1">
-    <span className={`text-sm ${selectedSetting === 'aSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
-      {selectedSetting === 'aSensitivity' && "➤ "}A Sensitivity
-    </span>
-    <span className="text-sm font-medium">
-      {settings.aSensitivity === 0 ? "ASYNC" : `${settings.aSensitivity.toFixed(1)} mV`}
-    </span>
-  </div>
-  <div className="relative">
-    <div className="h-2 bg-gray-100 rounded-full">
-      <div 
-        className="absolute h-full rounded-full transition-all duration-150 ease-out"
-        style={{ 
-          width: `${aValueToSlider(settings.aSensitivity)}%`,
-          backgroundColor: selectedSetting === 'aSensitivity' ? "#3b82f6" : "#9ca3af" 
-        }}
-      />
-    </div>
-    <input
-      type="range"
-      min="0"
-      max="100"
-      value={aValueToSlider(settings.aSensitivity)}
-      onChange={handleASliderChange}
-      className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-      disabled={isLocked || selectedSetting !== 'aSensitivity'} 
-    />
-  </div>
-  <div className="flex justify-between mt-1 text-xs text-gray-500">
-    <span>10 mV</span>
-    <span>0.4 mV</span>
-  </div>
-</div>
-
- {/* V Sensitivity */}
-<div className={`transition-all ${selectedSetting === 'vSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
-  <div className="flex justify-between items-center mb-1">
-    <span className={`text-sm ${selectedSetting === 'vSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
-      {selectedSetting === 'vSensitivity' && "➤ "}V Sensitivity
-    </span>
-    <span className="text-sm font-medium">
-      {settings.vSensitivity === 0 ? "ASYNC" : `${settings.vSensitivity.toFixed(1)} mV`}
-    </span>
-  </div>
-  <div className="relative">
-    <div className="h-2 bg-gray-100 rounded-full">
-      <div 
-        className="absolute h-full rounded-full transition-all duration-150 ease-out"
-        style={{ 
-          width: `${vValueToSlider(settings.vSensitivity)}%`,
-          backgroundColor: selectedSetting === 'vSensitivity' ? "#3b82f6" : "#9ca3af" 
-        }}
-      />
-    </div>
-    <input
-      type="range"
-      min="0"
-      max="100"
-      value={vValueToSlider(settings.vSensitivity)}
-      onChange={handleVSliderChange}
-      className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-      disabled={isLocked || selectedSetting !== 'vSensitivity'} 
-    />
-  </div>
-  <div className="flex justify-between mt-1 text-xs text-gray-500">
-    <span>20 mV</span>
-    <span>0.8 mV</span>
-  </div>
-</div>
-        
-       
-        
+        {/* V Sensitivity */}
+        <div className={`transition-all ${selectedSetting === 'vSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
+          <div className="flex justify-between items-center mb-1">
+            <span className={`text-sm ${selectedSetting === 'vSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
+              {selectedSetting === 'vSensitivity' && "➤ "}V Sensitivity
+            </span>
+            <span className="text-sm font-medium">
+              {settings.vSensitivity === 0 ? "ASYNC" : `${settings.vSensitivity.toFixed(1)} mV`}
+            </span>
+          </div>
+          <div className="relative">
+            <div className="h-2 bg-gray-100 rounded-full">
+              <div 
+                className="absolute h-full rounded-full transition-all duration-150 ease-out"
+                style={{ 
+                  width: `${vValueToSlider(settings.vSensitivity)}%`,
+                  backgroundColor: selectedSetting === 'vSensitivity' ? "#3b82f6" : "#9ca3af" 
+                }}
+              />
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={vValueToSlider(settings.vSensitivity)}
+              onChange={handleVSliderChange}
+              className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
+              disabled={isLocked || selectedSetting !== 'vSensitivity'} 
+            />
+          </div>
+          <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <span>20 mV</span>
+            <span>0.8 mV</span>
+          </div>
+        </div>
         
         {/* Simple instructions */}
         <div className="text-xs text-center text-gray-500 mt-2">
           Use ↑/↓ to navigate
         </div>
+        
+        {encoderConnected && (
+          <div className="mt-2 text-xs text-green-600 text-center">
+            Hardware encoder active for {selectedSetting === 'aSensitivity' ? 'A' : 'V'} Sensitivity control
+          </div>
+        )}
       </div>
     </div>
   );
