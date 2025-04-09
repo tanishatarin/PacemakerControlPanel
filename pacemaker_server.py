@@ -78,7 +78,6 @@ current_sensitivity_type = "v"  # Default to 'v' sensitivity
 
 
 # Add a function to handle sensitivity adjustments:
-# Fix for update_sensitivity function in pacemaker_server.py
 def update_sensitivity():
     global current_sensitivity, last_mode_output_steps, current_sensitivity_type
     
@@ -94,6 +93,8 @@ def update_sensitivity():
     
     # If there's a change in steps
     if diff != 0:
+        print(f"Sensitivity dial rotated: diff={diff}, current type={current_sensitivity_type}, current value={current_sensitivity}")
+        
         # Get step size based on current value and sensitivity type
         if current_sensitivity_type == "a":
             # Step sizes for A sensitivity
@@ -115,6 +116,7 @@ def update_sensitivity():
                 step_size = 2.0
         
         # Apply the change - INVERTED! Clockwise (diff > 0) decreases value
+        old_value = current_sensitivity
         if diff > 0:
             current_sensitivity -= step_size
         else:
@@ -137,7 +139,7 @@ def update_sensitivity():
         # Update the encoder position to match the current value
         last_mode_output_steps = current_steps
         
-        print(f"{current_sensitivity_type.upper()} Sensitivity updated: {current_sensitivity} mV (step size: {step_size}, diff: {diff})")
+        print(f"{current_sensitivity_type.upper()} Sensitivity updated: {old_value} → {current_sensitivity} mV (step size: {step_size}, diff: {diff})")
 
 
 def handle_down_button():

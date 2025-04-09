@@ -593,6 +593,11 @@ const ControlPanel: React.FC = () => {
     const stopPolling = startEncoderPolling(
       // Control values callback
       (data: EncoderControlData) => {
+        // Debug what data we received
+        if (data.sensitivity) {
+          console.log(`Received hardware sensitivity update: ${data.sensitivity.type} = ${data.sensitivity.value}mV`);
+        }
+        
         // Don't update UI from hardware while user is actively controlling
         if (localControlActive) {
           console.log('Ignoring hardware update during local control');
@@ -601,6 +606,7 @@ const ControlPanel: React.FC = () => {
         
         // Don't update if controls should be locked
         if (isControlsLocked()) {
+          console.log('Controls are locked, ignoring hardware update');
           return;
         }
         
@@ -617,27 +623,34 @@ const ControlPanel: React.FC = () => {
           setVOutput(data.v_output);
         }
         
-        // Handle sensitivity update
+        // Handle sensitivity update with detailed debugging
         if (data.sensitivity) {
+          console.log(`Processing sensitivity update from hardware: ${data.sensitivity.type} = ${data.sensitivity.value}mV`);
           setHardwareSensitivity(data.sensitivity);
           
-          // Update the appropriate sensitivity based on mode and active setting
+          // Only process if we're in the right screen and section
           if (data.sensitivity.type === 'a') {
-            // Update A sensitivity for DDD mode
-            setDddSettings(prev => ({
-              ...prev,
-              aSensitivity: data.sensitivity?.value ?? dddSettings.aSensitivity
-            }));
-          } else if (data.sensitivity.type === 'v') {
-            // For VVI mode
-            if (modes[selectedModeIndex] === 'VVI') {
-              setVviSensitivity(data.sensitivity.value);
+            if (modes[selectedModeIndex] === 'DDD' && showDDDSettings) {
+              console.log(`Updating UI with A sensitivity: ${data.sensitivity.value}mV`);
+              setDddSettings(prev => ({
+                ...prev,
+                aSensitivity: data.sensitivity?.value ?? dddSettings.aSensitivity
+              }));
             } else {
-              // For DDD mode
+              console.log("Received A sensitivity but not on DDD settings screen - ignoring");
+            }
+          } else if (data.sensitivity.type === 'v') {
+            if (modes[selectedModeIndex] === 'VVI' && showVVISettings) {
+              console.log(`Updating VVI sensitivity: ${data.sensitivity.value}mV`);
+              setVviSensitivity(data.sensitivity.value);
+            } else if (modes[selectedModeIndex] === 'DDD' && showDDDSettings) {
+              console.log(`Updating DDD V sensitivity: ${data.sensitivity.value}mV`);
               setDddSettings(prev => ({
                 ...prev,
                 vSensitivity: data.sensitivity?.value ?? dddSettings.vSensitivity
               }));
+            } else {
+              console.log("Received V sensitivity but not on appropriate settings screen - ignoring");
             }
           }
         }
@@ -654,9 +667,14 @@ const ControlPanel: React.FC = () => {
           }
         }
       },
-      // Status callback
+      // Status callback with debugging
       (status) => {
         setHardwareStatus(status);
+        
+        // Debug encoder hardware status
+        if (status.hardware?.mode_output_encoder) {
+          console.log(`Mode encoder position: ${status.hardware.mode_output_encoder.rotation_count}`);
+        }
       },
       // Poll interval
       100,
@@ -668,7 +686,7 @@ const ControlPanel: React.FC = () => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, selectedModeIndex, localControlActive, autoLockTimer, isLocked, isControlsLocked, modes]);
+  }, [encoderConnected, rate, aOutput, vOutput, selectedModeIndex, localControlActive, autoLockTimer, isLocked, isControlsLocked, modes, showDDDSettings, showVVISettings, dddSettings.aSensitivity, dddSettings.vSensitivity]);
 
   // Add a useEffect to synchronize sensitivity type based on selected setting in DDD mode
   useEffect(() => {
@@ -720,6 +738,66 @@ const ControlPanel: React.FC = () => {
       }
     }
   };
+
+  // Add a separate effect for debugging sensitivity syncing
+useEffect(() => {
+  if (!encoderConnected) return;
+  
+  console.log("Current settings state:");
+  console.log(`- Mode: ${modes[selectedModeIndex]}`);
+  console.log(`- DDD Settings showing: ${showDDDSettings}`);
+  console.log(`- VVI Settings showing: ${showVVISettings}`);
+  console.log(`- Selected DDD setting: ${selectedDDDSetting}`);
+  console.log(`- A sensitivity: ${dddSettings.aSensitivity}mV`);
+  console.log(`- V sensitivity: ${dddSettings.vSensitivity}mV (DDD), ${vviSensitivity}mV (VVI)`);
+}, [encoderConnected, modes, selectedModeIndex, showDDDSettings, showVVISettings, 
+    selectedDDDSetting, dddSettings.aSensitivity, dddSettings.vSensitivity, vviSensitivity]);
+
+// Update the sensitivity sync effect with better error handling and debugging
+useEffect(() => {
+  if (!encoderConnected) return;
+  
+  const syncSensitivityToHardware = async () => {
+    try {
+      let typeToSync = 'v';  // Default to V sensitivity
+      let valueToSync = 2.0; // Default value
+      
+      // Determine which sensitivity to sync based on current mode and UI state
+      if (modes[selectedModeIndex] === 'DDD' && showDDDSettings) {
+        if (selectedDDDSetting === 'aSensitivity') {
+          typeToSync = 'a';
+          valueToSync = dddSettings.aSensitivity;
+          console.log(`Syncing DDD A sensitivity to hardware: ${valueToSync}mV`);
+        } else {
+          typeToSync = 'v';
+          valueToSync = dddSettings.vSensitivity;
+          console.log(`Syncing DDD V sensitivity to hardware: ${valueToSync}mV`);
+        }
+      } 
+      else if (modes[selectedModeIndex] === 'VVI' && showVVISettings) {
+        typeToSync = 'v';
+        valueToSync = vviSensitivity;
+        console.log(`Syncing VVI V sensitivity to hardware: ${valueToSync}mV`);
+      }
+      else {
+        console.log("Not in a sensitivity adjustment screen, skipping sync");
+        return;
+      }
+      
+      // Only update hardware if we need to
+      await updateSensitivity(valueToSync, typeToSync);
+      
+    } catch (error) {
+      console.error("Failed to sync sensitivity to hardware:", error);
+    }
+  };
+  
+  // Call the sync function
+  syncSensitivityToHardware();
+  
+}, [selectedDDDSetting, showDDDSettings, showVVISettings, selectedModeIndex, 
+    encoderConnected, dddSettings.aSensitivity, dddSettings.vSensitivity, vviSensitivity, modes]);
+
 
   // Handle pause button states
   const handlePauseStart = () => {
