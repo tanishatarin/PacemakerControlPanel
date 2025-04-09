@@ -15,7 +15,8 @@ import {
   toggleLock, 
   getLockState, 
   ApiStatus,
-  EncoderControlData
+  EncoderControlData,
+  updateSensitivity
 } from '../utils/encoderApi';
 
 
@@ -51,6 +52,7 @@ const ControlPanel: React.FC = () => {
   const [localControlActive, setLocalControlActive] = useState(false);
   
   const [selectedDDDSetting, setSelectedDDDSetting] = useState<'aSensitivity' | 'vSensitivity'>('aSensitivity');
+  const [hardwareSensitivity, setHardwareSensitivity] = useState<{value: number, type: string}>({value: 2.0, type: 'v'});
 
   // DDD Mode specific states
   const [dddSettings, setDddSettings] = useState({
@@ -228,83 +230,103 @@ const ControlPanel: React.FC = () => {
       setAOutput(value);
     } else if (key === 'v_output') {
       setVOutput(value);
+    } else if (key === 'a_sensitivity') {
+      handleDDDSettingsChange('aSensitivity', value);
+      
+      // Update hardware sensitivity if connected
+      if (encoderConnected) {
+        await updateSensitivity(value, 'a');
+      }
+    } else if (key === 'v_sensitivity') {
+      // Update VVI or DDD sensitivity depending on the mode
+      if (modes[selectedModeIndex] === 'VVI') {
+        handleVVISensitivityChange(value);
+      } else {
+        handleDDDSettingsChange('vSensitivity', value);
+      }
+      
+      // Update hardware sensitivity if connected
+      if (encoderConnected) {
+        await updateSensitivity(value, 'v');
+      }
     }
     
     // Flag that we initiated this change
     lastUpdateRef.current = { source: 'frontend', time: Date.now() };
     setLocalControlActive(true);
     
-    // Send to hardware if connected
-    if (encoderConnected) {
+    // For non-sensitivity keys (rate, a_output, v_output)
+    if (['rate', 'a_output', 'v_output'].includes(key) && encoderConnected) {
       await updateControls({ [key]: value });
-      
-      // Allow hardware control again after a short delay
-      setTimeout(() => {
-        setLocalControlActive(false);
-      }, 500);
     }
+    
+    // Allow hardware control again after a short delay
+    setTimeout(() => {
+      setLocalControlActive(false);
+    }, 500);
   };
   
-  // Start encoder polling if connected
-  useEffect(() => {
-    if (!encoderConnected) return;
+  // the old one 
+  // // Start encoder polling if connected
+  // useEffect(() => {
+  //   if (!encoderConnected) return;
     
-    console.log('Starting encoder polling');
+  //   console.log('Starting encoder polling');
     
-    const stopPolling = startEncoderPolling(
-      // Control values callback
-      (data: EncoderControlData) => {
-        // Don't update UI from hardware while user is actively controlling
-        if (localControlActive) {
-          console.log('Ignoring hardware update during local control');
-          return;
-        }
+  //   const stopPolling = startEncoderPolling(
+  //     // Control values callback
+  //     (data: EncoderControlData) => {
+  //       // Don't update UI from hardware while user is actively controlling
+  //       if (localControlActive) {
+  //         console.log('Ignoring hardware update during local control');
+  //         return;
+  //       }
         
-        // Don't update if controls should be locked
-        if (isControlsLocked()) {
-          return;
-        }
+  //       // Don't update if controls should be locked
+  //       if (isControlsLocked()) {
+  //         return;
+  //       }
         
-        // Update local state from hardware
-        if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
-          setRate(data.rate);
-        }
+  //       // Update local state from hardware
+  //       if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
+  //         setRate(data.rate);
+  //       }
         
-        if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
-          setAOutput(data.a_output);
-        }
+  //       if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
+  //         setAOutput(data.a_output);
+  //       }
         
-        if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
-          setVOutput(data.v_output);
-        }
+  //       if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
+  //         setVOutput(data.v_output);
+  //       }
 
-        // handles lock state changes
-        if (data.locked !== undefined && data.locked !== isLocked) {
-          setIsLocked(data.locked);
-          if (data.locked) {
-            // If device just locked, clear any auto-lock timer
-            if (autoLockTimer) {
-              clearTimeout(autoLockTimer);
-              setAutoLockTimer(null);
-            }
-          }
-        }
-      },
-      // Status callback
-      (status) => {
-        setHardwareStatus(status);
-      },
-      // Poll interval
-      100,
-      // Skip updates from these sources
-      ['frontend']
-    );
+  //       // handles lock state changes
+  //       if (data.locked !== undefined && data.locked !== isLocked) {
+  //         setIsLocked(data.locked);
+  //         if (data.locked) {
+  //           // If device just locked, clear any auto-lock timer
+  //           if (autoLockTimer) {
+  //             clearTimeout(autoLockTimer);
+  //             setAutoLockTimer(null);
+  //           }
+  //         }
+  //       }
+  //     },
+  //     // Status callback
+  //     (status) => {
+  //       setHardwareStatus(status);
+  //     },
+  //     // Poll interval
+  //     100,
+  //     // Skip updates from these sources
+  //     ['frontend']
+  //   );
       
-    return () => {
-      console.log('Stopping encoder polling');
-      stopPolling();
-    };
-  }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
+  //   return () => {
+  //     console.log('Stopping encoder polling');
+  //     stopPolling();
+  //   };
+  // }, [encoderConnected, rate, aOutput, vOutput, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
 
   // Handle pause button functionality
   useEffect(() => {
@@ -381,9 +403,9 @@ const ControlPanel: React.FC = () => {
       lastUpdateRef.current = { source: 'frontend', time: Date.now() };
       setLocalControlActive(true);
       
-      updateControls({ 
-        active_control: key === 'aSensitivity' ? 'a_output' : 'v_output'
-      });
+      const sensitivityType = key === 'aSensitivity' ? 'a' : 'v';
+      updateSensitivity(value, sensitivityType)
+        .catch(err => console.error(`Failed to update ${sensitivityType} sensitivity:`, err));
       
       // Allow hardware control again after a short delay
       setTimeout(() => {
@@ -407,10 +429,8 @@ const ControlPanel: React.FC = () => {
       lastUpdateRef.current = { source: 'frontend', time: Date.now() };
       setLocalControlActive(true);
       
-      updateControls({ 
-        active_control: 'v_output',
-        v_output: value  // Might need adjustment depending on your implementation
-      });
+      updateSensitivity(value, 'v')
+        .catch(err => console.error('Failed to update V sensitivity:', err));
       
       // Allow hardware control again after a short delay
       setTimeout(() => {
@@ -418,6 +438,7 @@ const ControlPanel: React.FC = () => {
       }, 500);
     }
   };
+
 
   // Activate emergency mode
   const handleEmergencyMode = useCallback(() => {
@@ -511,48 +532,6 @@ const ControlPanel: React.FC = () => {
     };
   }, [handleLeftArrowPress]);
 
-   // Set up listener for hardware mode output encoder
-   useEffect(() => {
-    const handleModeOutputUp = () => {
-      console.log("Hardware mode output up detected");
-      // Check if we're in DDD or VVI settings and handle navigation
-      if (showDDDSettings) {
-        // If in DDD settings, switch between A and V sensitivity
-        setSelectedDDDSetting(prev => 
-          prev === 'aSensitivity' ? 'vSensitivity' : 'aSensitivity'
-        );
-      } else if (showVVISettings) {
-        // In VVI settings, there's only one setting to adjust
-        console.log("Mode output in VVI settings - no navigation needed");
-      }
-    };
-
-    const handleModeOutputDown = () => {
-      console.log("Hardware mode output down detected");
-      // Same logic as handleModeOutputUp, but in reverse direction
-      if (showDDDSettings) {
-        // If in DDD settings, switch between A and V sensitivity
-        setSelectedDDDSetting(prev => 
-          prev === 'aSensitivity' ? 'vSensitivity' : 'aSensitivity'
-        );
-      } else if (showVVISettings) {
-        // In VVI settings, there's only one setting to adjust
-        console.log("Mode output in VVI settings - no navigation needed");
-      }
-    };
-
-    // Add event listeners for the custom events
-    window.addEventListener('hardware-mode_output-up', handleModeOutputUp);
-    window.addEventListener('hardware-mode_output-down', handleModeOutputDown);
-
-    // Clean up
-    return () => {
-      window.removeEventListener('hardware-mode_output-up', handleModeOutputUp);
-      window.removeEventListener('hardware-mode_output-down', handleModeOutputDown);
-    };
-  }, [showDDDSettings, showVVISettings]);
-
-
   // Set up listener for hardware emergency button press
   useEffect(() => {
     const handleHardwareEmergencyButtonPress = () => {
@@ -603,6 +582,113 @@ const ControlPanel: React.FC = () => {
     
     return () => clearInterval(interval);
   }, [encoderConnected, isLocked, autoLockTimer, resetAutoLockTimer]);
+
+
+  // Fix the sensitivity handling in the encoder polling useEffect
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    console.log('Starting encoder polling');
+    
+    const stopPolling = startEncoderPolling(
+      // Control values callback
+      (data: EncoderControlData) => {
+        // Don't update UI from hardware while user is actively controlling
+        if (localControlActive) {
+          console.log('Ignoring hardware update during local control');
+          return;
+        }
+        
+        // Don't update if controls should be locked
+        if (isControlsLocked()) {
+          return;
+        }
+        
+        // Update local state from hardware
+        if (data.rate !== undefined && Math.abs(data.rate - rate) > 0.1) {
+          setRate(data.rate);
+        }
+        
+        if (data.a_output !== undefined && Math.abs(data.a_output - aOutput) > 0.1) {
+          setAOutput(data.a_output);
+        }
+        
+        if (data.v_output !== undefined && Math.abs(data.v_output - vOutput) > 0.1) {
+          setVOutput(data.v_output);
+        }
+        
+        // Handle sensitivity update
+        if (data.sensitivity) {
+          setHardwareSensitivity(data.sensitivity);
+          
+          // Update the appropriate sensitivity based on mode and active setting
+          if (data.sensitivity.type === 'a') {
+            // Update A sensitivity for DDD mode
+            setDddSettings(prev => ({
+              ...prev,
+              aSensitivity: data.sensitivity?.value ?? dddSettings.aSensitivity
+            }));
+          } else if (data.sensitivity.type === 'v') {
+            // For VVI mode
+            if (modes[selectedModeIndex] === 'VVI') {
+              setVviSensitivity(data.sensitivity.value);
+            } else {
+              // For DDD mode
+              setDddSettings(prev => ({
+                ...prev,
+                vSensitivity: data.sensitivity?.value ?? dddSettings.vSensitivity
+              }));
+            }
+          }
+        }
+
+        // handles lock state changes
+        if (data.locked !== undefined && data.locked !== isLocked) {
+          setIsLocked(data.locked);
+          if (data.locked) {
+            // If device just locked, clear any auto-lock timer
+            if (autoLockTimer) {
+              clearTimeout(autoLockTimer);
+              setAutoLockTimer(null);
+            }
+          }
+        }
+      },
+      // Status callback
+      (status) => {
+        setHardwareStatus(status);
+      },
+      // Poll interval
+      100,
+      // Skip updates from these sources
+      ['frontend']
+    );
+        
+    return () => {
+      console.log('Stopping encoder polling');
+      stopPolling();
+    };
+  }, [encoderConnected, rate, aOutput, vOutput, selectedModeIndex, localControlActive, autoLockTimer, isLocked, isControlsLocked, modes]);
+
+  // Add a useEffect to synchronize sensitivity type based on selected setting in DDD mode
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    // Only sync type when in DDD mode with DDD settings showing
+    if (modes[selectedModeIndex] === 'DDD' && showDDDSettings) {
+      // Update the hardware encoder to control the selected sensitivity
+      updateSensitivity(
+        selectedDDDSetting === 'aSensitivity' 
+          ? dddSettings.aSensitivity 
+          : dddSettings.vSensitivity,
+        selectedDDDSetting === 'aSensitivity' ? 'a' : 'v'
+      ).catch(console.error);
+    }
+    // For VVI mode, always set to v sensitivity
+    else if (modes[selectedModeIndex] === 'VVI' && showVVISettings) {
+      updateSensitivity(vviSensitivity, 'v').catch(console.error);
+    }
+  }, [selectedDDDSetting, showDDDSettings, showVVISettings, selectedModeIndex, encoderConnected, dddSettings, vviSensitivity, modes]);
 
   // Toggle lock state
   const handleLockToggle = async () => {

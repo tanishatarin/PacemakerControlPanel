@@ -22,14 +22,23 @@ export interface ApiStatus {
     v_output_encoder?: {
       rotation_count?: number;
     };
+    mode_output_encoder?: {
+      rotation_count?: number;
+    };
     buttons?: {
       up_pressed?: boolean;
       down_pressed?: boolean;
       left_pressed?: boolean;
       emergency_pressed?: boolean;
-      mode_output_up?: boolean;
-      mode_output_down?: boolean;
     };
+    sensitivity?: {
+      value: number;
+      type: string;
+    };
+  };
+  sensitivity?: {
+    value: number;
+    type: string;
   };
 }
 
@@ -40,6 +49,10 @@ export interface EncoderControlData {
   locked?: boolean;
   mode?: number;
   active_control?: string;
+  sensitivity?: {
+    value: number;
+    type: string;
+  };
 }
 
 // Base URL for API calls
@@ -192,36 +205,81 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
+// Add this function to get sensitivity values
+export const getSensitivity = async (): Promise<{value: number, type: string} | null> => {
+  try {
+    const response = await fetch(`${getBaseUrl()}/sensitivity`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        value: data.value,
+        type: data.type
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting sensitivity:', error);
+    return null;
+  }
+};
+
+
+// Add this function to update sensitivity
+export const updateSensitivity = async (value: number, type: string): Promise<void> => {
+  try {
+    await fetch(`${getBaseUrl()}/sensitivity/set`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value, type }),
+    }).then(handleApiError);
+  } catch (error) {
+    console.error('Error updating sensitivity:', error);
+    throw error;
+  }
+};
+
 // Add to the polling function to ensure hardware emergency button works
 export const startEncoderPolling = (
-  onDataUpdate: (data: EncoderControlData) => void,
-  onStatusUpdate: (status: ApiStatus) => void,
-  pollInterval = 100,
-  ignoreUpdateSources: string[] = []
-) => {
-  let isPolling = true;
-  
-  const pollHealth = async () => {
-    if (!isPolling) return;
+    onDataUpdate: (data: EncoderControlData) => void,
+    onStatusUpdate: (status: ApiStatus) => void,
+    pollInterval = 100,
+    ignoreUpdateSources: string[] = []
+  ) => {
+    let isPolling = true;
     
-    try {
-      const status = await checkEncoderStatus();
+    const pollHealth = async () => {
+      if (!isPolling) return;
       
-      if (status) {
-        // Update status data
-        onStatusUpdate(status);
+      try {
+        const status = await checkEncoderStatus();
         
-        // Extract control values and pass to data update handler
-        const controlData: EncoderControlData = {
-          rate: status.rate,
-          a_output: status.a_output,
-          v_output: status.v_output,
-          locked: status.locked,
-          mode: status.mode
-        };
-        
-        onDataUpdate(controlData);
-        
+        if (status) {
+          // Update status data
+          onStatusUpdate(status);
+          
+          // Extract control values and pass to data update handler
+          const controlData: EncoderControlData = {
+            rate: status.rate,
+            a_output: status.a_output,
+            v_output: status.v_output,
+            locked: status.locked,
+            mode: status.mode
+          };
+          
+          // Add sensitivity data if available
+          if (status.hardware?.sensitivity) {
+            controlData.sensitivity = status.hardware.sensitivity;
+          }
+          
+          onDataUpdate(controlData);
+          
         // Check for button presses
         if (status.buttons) {
           // Handle up button press

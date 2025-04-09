@@ -15,7 +15,6 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 # Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
-# Clock 8, DT 7 for the mode output encoder
 mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
@@ -71,6 +70,75 @@ last_left_press_time = 0
 
 emergency_button_pressed = False
 last_emergency_press_time = 0
+
+# for mode dials (vvi/ddd) 
+last_mode_output_steps = 100
+current_sensitivity = 2.0  # Default value (you can adjust this as needed)
+current_sensitivity_type = "v"  # Default to 'v' sensitivity
+
+
+# Add a function to handle sensitivity adjustments:
+# Fix for update_sensitivity function in pacemaker_server.py
+def update_sensitivity():
+    global current_sensitivity, last_mode_output_steps, current_sensitivity_type
+    
+    # Skip updating if locked
+    if is_locked:
+        return
+    
+    # Get current steps from encoder
+    current_steps = mode_output_encoder.steps
+    
+    # Calculate the difference in steps
+    diff = current_steps - last_mode_output_steps
+    
+    # If there's a change in steps
+    if diff != 0:
+        # Get step size based on current value and sensitivity type
+        if current_sensitivity_type == "a":
+            # Step sizes for A sensitivity
+            if current_sensitivity < 1.0:
+                step_size = 0.1
+            elif current_sensitivity < 3.0:
+                step_size = 0.2
+            else:
+                step_size = 0.5
+        else:  # V sensitivity
+            # Step sizes for V sensitivity
+            if current_sensitivity < 1.0:
+                step_size = 0.2
+            elif current_sensitivity < 3.0:
+                step_size = 0.5
+            elif current_sensitivity < 10.0:
+                step_size = 1.0
+            else:
+                step_size = 2.0
+        
+        # Apply the change - INVERTED! Clockwise (diff > 0) decreases value
+        if diff > 0:
+            current_sensitivity -= step_size
+        else:
+            current_sensitivity += step_size
+            
+        # Define min/max values based on sensitivity type
+        min_val = 0.4 if current_sensitivity_type == "a" else 0.8
+        max_val = 10.0 if current_sensitivity_type == "a" else 20.0
+        
+        # Set to 0 if close to min value (for ASYNC mode)
+        if current_sensitivity < min_val + (step_size / 2):
+            current_sensitivity = 0
+        else:
+            # Ensure the value stays within bounds
+            current_sensitivity = max(min_val, min(current_sensitivity, max_val))
+            
+            # Round to the nearest step size to prevent floating point errors
+            current_sensitivity = round(current_sensitivity / step_size) * step_size
+        
+        # Update the encoder position to match the current value
+        last_mode_output_steps = current_steps
+        
+        print(f"{current_sensitivity_type.upper()} Sensitivity updated: {current_sensitivity} mV (step size: {step_size}, diff: {diff})")
+
 
 def handle_down_button():
     global last_down_press_time, down_button_pressed
@@ -211,29 +279,6 @@ def update_v_output():
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
-# Track last encoder position for mode settings
-last_mode_output_steps = 100
-
-def update_mode_output_settings():
-    global last_mode_output_steps
-
-    # Get current steps from encoder
-    current_steps = mode_output_encoder.steps
-    
-    # Calculate the difference in steps
-    diff = current_steps - last_mode_output_steps
-    
-    # Dispatch an event based on the rotation direction
-    if diff != 0:
-        # Invert the direction since we want CCW to increase, CW to decrease
-        event_type = 'mode_output_down' if diff > 0 else 'mode_output_up'
-        print(f"Mode output encoder rotated: {event_type}")
-        
-        # Update last steps
-        last_mode_output_steps = current_steps
-
-# Attach event listener to mode output encoder
-mode_output_encoder.when_rotated = update_mode_output_settings
 
 # Function to toggle lock state
 def toggle_lock():
@@ -256,12 +301,49 @@ lock_button.when_released = toggle_lock  # Change from when_pressed to when_rele
 rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
+mode_output_encoder.when_rotated = update_sensitivity
 lock_button.when_pressed = toggle_lock
 
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
 emergency_button.when_pressed = handle_emergency_button  # Use pressed for emergency instead of released
+
+
+# Add API endpoints for sensitivity control
+@app.route('/api/sensitivity', methods=['GET'])
+def get_sensitivity():
+    update_sensitivity()
+    return jsonify({
+        'value': current_sensitivity,
+        'type': current_sensitivity_type,
+        'min': 0.4 if current_sensitivity_type == "a" else 0.8,
+        'max': 10.0 if current_sensitivity_type == "a" else 20.0
+    })
+
+@app.route('/api/sensitivity/set', methods=['POST'])
+def set_sensitivity():
+    global current_sensitivity, current_sensitivity_type
+    
+    # Check if locked
+    if is_locked:
+        return jsonify({'error': 'Device is locked'}), 403
+    
+    data = request.json
+    if 'value' in data:
+        current_sensitivity = float(data['value'])
+        
+        # Update sensitivity type if provided
+        if 'type' in data and data['type'] in ['a', 'v']:
+            current_sensitivity_type = data['type']
+            
+        return jsonify({
+            'success': True, 
+            'value': current_sensitivity,
+            'type': current_sensitivity_type
+        })
+    
+    return jsonify({'error': 'No value provided'}), 400
 
 
 # API endpoints for Lock status
@@ -487,12 +569,19 @@ def get_hardware_info():
             'v_output_encoder': {
                 'rotation_count': v_output_encoder.steps
             },
+            'mode_output_encoder': {
+                'rotation_count': mode_output_encoder.steps
+            },
             'buttons': {
                 'up_pressed': up_button_pressed,
                 'down_pressed': down_button_pressed,
                 'left_pressed': left_button_pressed,
                 'emergency_pressed': emergency_button_pressed
             }
+        },
+        'sensitivity': {
+            'value': current_sensitivity,
+            'type': current_sensitivity_type
         }
     })
 
