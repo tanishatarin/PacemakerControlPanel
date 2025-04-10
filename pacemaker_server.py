@@ -16,7 +16,7 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
 # mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
-mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False, bounce_time=0.001)
+mode_output_encoder = RotaryEncoder(8, 7, max_steps=400, wrap=False, bounce_time=0.002)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
 lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
@@ -87,6 +87,8 @@ emergency_button_pressed = False
 last_emergency_press_time = 0
 
 last_mode_encoder_activity = time.time()
+encoder_activity_flag = False
+
 
 
 def handle_down_button():
@@ -254,9 +256,8 @@ def update_v_output():
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
-
 def update_mode_output():
-    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity
+    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag
     
     # Skip if locked or no active control
     if is_locked or active_control == 'none':
@@ -276,14 +277,23 @@ def update_mode_output():
     # Skip if no real movement
     if step_diff == 0:
         return
-        
+    
+    # IMPORTANT: Scale the steps - require 2 physical steps for 1 logical step
+    # Only process if the absolute difference is at least 2
+    if abs(step_diff) < 2:
+        return
+    
     # Update activity timestamp
     last_mode_encoder_activity = time.time()
+    
+    # Set encoder activity flag to true (will be sent in API response)
+    encoder_activity_flag = True
     
     # Record the steps IMMEDIATELY to prevent drift
     update_mode_output.last_steps = current_steps
     
     # Movement direction (reversed for expected behavior)
+    # Divide by 2 to convert physical steps to logical steps
     direction = -1 if step_diff > 0 else 1
     
     # Process based on control type
@@ -306,7 +316,7 @@ def update_mode_output():
         else:
             # Normal adjustment
             if a_sensitivity > 0:
-            # Special handling for near-maximum values
+                # Special handling for near-maximum values
                 if max_a_sensitivity - a_sensitivity < 1.0:
                     # Very close to max, use precise steps
                     if direction < 0:  # Moving down
@@ -350,7 +360,6 @@ def update_mode_output():
                     if min_v_sensitivity <= new_value <= max_v_sensitivity:
                         v_sensitivity = round(new_value, 1)  # Round to 1 decimal
                 print(f"V Sensitivity: {v_sensitivity} mV")
-
 
 # Add near your other hardware functions
 def hardware_reset_mode_encoder():
@@ -689,7 +698,7 @@ def set_mode():
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
+    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
     
     # Create response data
     status_data = {
@@ -699,9 +708,10 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
-        'a_sensitivity': a_sensitivity,  # Add this
-        'v_sensitivity': v_sensitivity,  # Add this
-        'active_control': active_control,  # Add this
+        'a_sensitivity': a_sensitivity,
+        'v_sensitivity': v_sensitivity,
+        'active_control': active_control,
+        'encoder_active': encoder_activity_flag,  # Add this line
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
@@ -710,7 +720,7 @@ def health_check():
         }
     }
     
-    # Reset button states
+    # Reset flags
     was_up_pressed = up_button_pressed
     was_down_pressed = down_button_pressed
     was_left_pressed = left_button_pressed
@@ -719,6 +729,7 @@ def health_check():
     down_button_pressed = False
     left_button_pressed = False
     emergency_button_pressed = False
+    encoder_activity_flag = False  # Reset the flag
     
     return jsonify(status_data)
 

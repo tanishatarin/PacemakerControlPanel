@@ -470,6 +470,13 @@ useEffect(() => {
       // Status callback
       (status) => {
         setHardwareStatus(status);
+
+        // if autolock timer is active, reset it
+        if (status.encoder_active) {
+          console.log("Encoder activity detected - resetting auto-lock timer");
+          resetAutoLockTimer();
+        }
+    
       },
       // Poll interval
       100,

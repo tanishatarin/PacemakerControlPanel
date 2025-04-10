@@ -12,6 +12,7 @@ export interface ApiStatus {
     left_pressed?: boolean;
     emergency_pressed?: boolean;
   };
+  encoder_active?: boolean;
   a_sensitivity?: number;
   v_sensitivity?: number;
   active_control?: string;
