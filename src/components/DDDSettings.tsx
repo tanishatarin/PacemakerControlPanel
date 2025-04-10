@@ -81,16 +81,23 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
       const controlType = selectedSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
       const sensitivityValue = selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity;
       
-      console.log(`Setting active control to ${controlType} with value ${sensitivityValue}`);
+      console.log(`DDD Settings: Setting active control to ${controlType} with value ${sensitivityValue}`);
       
-      // Update the hardware
-      updateControls({ 
-        active_control: controlType,
-        [controlType]: sensitivityValue
-      }).catch(err => console.error('Failed to set active control:', err));
+      // Update the hardware with a slight delay to ensure proper sequencing
+      setTimeout(() => {
+        updateControls({ 
+          active_control: controlType,
+          [controlType]: sensitivityValue
+        }).then(() => {
+          console.log(`Successfully set encoder to ${controlType} mode`);
+        }).catch(err => {
+          console.error('Failed to set active control:', err);
+        });
+      }, 100);
       
       // Reset active control when component unmounts
       return () => {
+        console.log('DDD Settings: Resetting active control on unmount');
         updateControls({ active_control: 'none' })
           .catch(err => console.error('Failed to reset active control:', err));
       };
