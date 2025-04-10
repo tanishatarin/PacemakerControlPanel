@@ -155,23 +155,30 @@ def get_output_step_size(value):
         return 1.0
 
 # Function to get step size for sensitivity values
+# Update the step size function for more precise control at upper ranges
 def get_sensitivity_step_size(value, is_a_sensitivity=True):
     if is_a_sensitivity:
+        # For A sensitivity (0.4-10.0 mV)
         if value <= 1:
             return 0.1
         if value <= 2:
             return 0.2
         if value <= 5:
             return 0.5
-        return 1.0
-    else:  # For V sensitivity
+        if value <= 9:  # Special case for approaching max
+            return 1.0
+        return 0.5  # Smaller steps near the maximum
+    else:
+        # For V sensitivity (0.8-20.0 mV)
         if value <= 1:
             return 0.2
         if value <= 3:
             return 0.5
         if value <= 10:
             return 1.0
-        return 2.0
+        if value <= 18:  # Special case for approaching max
+            return 2.0
+        return 0.5  # Smaller steps near the maximum
 
 # Function to update the current A. Output value
 def update_a_output():
@@ -248,7 +255,6 @@ def update_v_output():
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
 
-# Completely rewrite the update_mode_output function
 def update_mode_output():
     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity
     
@@ -286,34 +292,64 @@ def update_mode_output():
         step_size = get_sensitivity_step_size(a_sensitivity, True)
         
         if a_sensitivity == 0 and direction < 0:
+            # Going from ASYNC to minimum sensitivity
             a_sensitivity = min_a_sensitivity
             print(f"A Sensitivity: ASYNC → {a_sensitivity} mV")
         elif a_sensitivity == min_a_sensitivity and direction > 0:
+            # Going from minimum sensitivity to ASYNC
             a_sensitivity = 0
             print(f"A Sensitivity: {min_a_sensitivity} mV → ASYNC")
+        elif a_sensitivity == min_a_sensitivity and direction < 0:
+            # IMPORTANT: Allow going from minimum to next step up in range
+            a_sensitivity = min_a_sensitivity + step_size
+            print(f"A Sensitivity: {min_a_sensitivity} mV → {a_sensitivity} mV (entering range)")
         else:
+            # Normal adjustment
             if a_sensitivity > 0:
-                new_value = a_sensitivity + (direction * step_size)
-                if min_a_sensitivity <= new_value <= max_a_sensitivity:
-                    a_sensitivity = round(new_value, 1)  # Round to 1 decimal
-                    print(f"A Sensitivity: {a_sensitivity} mV")
+            # Special handling for near-maximum values
+                if max_a_sensitivity - a_sensitivity < 1.0:
+                    # Very close to max, use precise steps
+                    if direction < 0:  # Moving down
+                        a_sensitivity = max(min_a_sensitivity, a_sensitivity - 0.1)
+                    else:  # Moving up
+                        a_sensitivity = max_a_sensitivity
+                else:
+                    new_value = a_sensitivity + (direction * step_size)
+                    if min_a_sensitivity <= new_value <= max_a_sensitivity:
+                        a_sensitivity = round(new_value, 1)  # Round to 1 decimal
+                print(f"A Sensitivity: {a_sensitivity} mV")
     
     elif active_control == 'v_sensitivity':
         # Handle V sensitivity adjustments
         step_size = get_sensitivity_step_size(v_sensitivity, False)
         
         if v_sensitivity == 0 and direction < 0:
+            # Going from ASYNC to minimum sensitivity
             v_sensitivity = min_v_sensitivity
             print(f"V Sensitivity: ASYNC → {v_sensitivity} mV")
         elif v_sensitivity == min_v_sensitivity and direction > 0:
+            # Going from minimum sensitivity to ASYNC
             v_sensitivity = 0
             print(f"V Sensitivity: {min_v_sensitivity} mV → ASYNC")
+        elif v_sensitivity == min_v_sensitivity and direction < 0:
+            # IMPORTANT: Allow going from minimum to next step up in range
+            v_sensitivity = min_v_sensitivity + step_size
+            print(f"V Sensitivity: {min_v_sensitivity} mV → {v_sensitivity} mV (entering range)")
         else:
+            # Normal adjustment
             if v_sensitivity > 0:
-                new_value = v_sensitivity + (direction * step_size)
-                if min_v_sensitivity <= new_value <= max_v_sensitivity:
-                    v_sensitivity = round(new_value, 1)  # Round to 1 decimal
-                    print(f"V Sensitivity: {v_sensitivity} mV")
+                # Special handling for near-maximum values
+                if max_v_sensitivity - v_sensitivity < 2.0:
+                    # Very close to max, use precise steps
+                    if direction < 0:  # Moving down
+                        v_sensitivity = max(min_v_sensitivity, v_sensitivity - 0.5)
+                    else:  # Moving up
+                        v_sensitivity = max_v_sensitivity
+                else:
+                    new_value = v_sensitivity + (direction * step_size)
+                    if min_v_sensitivity <= new_value <= max_v_sensitivity:
+                        v_sensitivity = round(new_value, 1)  # Round to 1 decimal
+                print(f"V Sensitivity: {v_sensitivity} mV")
 
 
 # Add near your other hardware functions
