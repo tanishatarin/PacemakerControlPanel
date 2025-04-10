@@ -244,53 +244,79 @@ def update_v_output():
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
 def update_mode_output():
-    global a_sensitivity, v_sensitivity, active_control
-    # Skip updating if locked or in DOO mode or if no control is active
-    if is_locked or current_mode == 5 or active_control == 'none':
+    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder
+    # Skip updating if locked or if no control is active
+    if is_locked or active_control == 'none':
         return
     
-    # Get raw steps directly from encoder
+    # Get current steps from encoder
     current_steps = mode_output_encoder.steps
     
-    # IMPORTANT: Use absolute position mapping rather than tracking diffs
-    # This prevents accumulation of errors that can cause "sticking"
+    # Store steps to track changes
+    last_steps = getattr(update_mode_output, 'last_steps', current_steps)
+    update_mode_output.last_steps = current_steps
     
+    # Calculate step difference
+    step_diff = current_steps - last_steps
+    
+    # Only process if there's movement
+    if step_diff == 0:
+        return
+        
+    # Determine direction
+    direction = 1 if step_diff > 0 else -1
+    
+    # Process based on active control
     if active_control == 'a_sensitivity':
-        # Map the encoder position (0-100) directly to sensitivity value
-        normalized_pos = current_steps % 100  # Keep within 0-99 range
+        # Skip if in DOO mode
+        if current_mode == 5:
+            return
+            
+        # Get appropriate step size
+        step_size = get_sensitivity_step_size(a_sensitivity, True)
         
-        if normalized_pos >= 95:  # Top 5% of range = ASYNC (0 mV)
-            new_sensitivity = 0
+        # Handle special case for ASYNC (0)
+        if a_sensitivity == 0 and direction < 0:
+            # Going from ASYNC to minimum sensitivity
+            a_sensitivity = min_a_sensitivity
+        elif a_sensitivity == min_a_sensitivity and direction > 0:
+            # Going from minimum sensitivity to ASYNC
+            a_sensitivity = 0
         else:
-            # Map 0-94 steps to min-max sensitivity (reversed for intuitive direction)
-            # Lower positions = higher sensitivity values (less sensitive)
-            new_sensitivity = min_a_sensitivity + (normalized_pos / 94) * (max_a_sensitivity - min_a_sensitivity)
-            # Round to nearest valid step
-            step_size = get_sensitivity_step_size(new_sensitivity, True)
-            new_sensitivity = round(new_sensitivity / step_size) * step_size
-        
-        # Only update if the value actually changed
-        if abs(new_sensitivity - a_sensitivity) > 0.01:
-            print(f"A Sensitivity updated: {a_sensitivity} -> {new_sensitivity} mV (steps={current_steps})")
-            a_sensitivity = new_sensitivity
+            # Normal adjustment
+            if a_sensitivity > 0:  # Only adjust if not in ASYNC mode
+                new_value = a_sensitivity + (direction * step_size)
+                # Ensure within range
+                if min_a_sensitivity <= new_value <= max_a_sensitivity:
+                    a_sensitivity = new_value
+                    
+        print(f"A Sensitivity updated: {a_sensitivity} mV (direction={direction}, step={step_size})")
             
     elif active_control == 'v_sensitivity':
-        # Same approach for V sensitivity
-        normalized_pos = current_steps % 100
+        # Skip if in DOO mode
+        if current_mode == 5:
+            return
+            
+        # Get appropriate step size
+        step_size = get_sensitivity_step_size(v_sensitivity, False)
         
-        if normalized_pos >= 95:  # Top 5% of range = ASYNC (0 mV)
-            new_sensitivity = 0
+        # Handle special case for ASYNC (0)
+        if v_sensitivity == 0 and direction < 0:
+            # Going from ASYNC to minimum sensitivity
+            v_sensitivity = min_v_sensitivity
+        elif v_sensitivity == min_v_sensitivity and direction > 0:
+            # Going from minimum sensitivity to ASYNC
+            v_sensitivity = 0
         else:
-            # Map 0-94 steps to min-max sensitivity
-            new_sensitivity = min_v_sensitivity + (normalized_pos / 94) * (max_v_sensitivity - min_v_sensitivity)
-            step_size = get_sensitivity_step_size(new_sensitivity, False)
-            new_sensitivity = round(new_sensitivity / step_size) * step_size
-        
-        # Only update if the value actually changed
-        if abs(new_sensitivity - v_sensitivity) > 0.01:
-            print(f"V Sensitivity updated: {v_sensitivity} -> {new_sensitivity} mV (steps={current_steps})")
-            v_sensitivity = new_sensitivity
-     
+            # Normal adjustment
+            if v_sensitivity > 0:  # Only adjust if not in ASYNC mode
+                new_value = v_sensitivity + (direction * step_size)
+                # Ensure within range
+                if min_v_sensitivity <= new_value <= max_v_sensitivity:
+                    v_sensitivity = new_value
+                    
+        print(f"V Sensitivity updated: {v_sensitivity} mV (direction={direction}, step={step_size})")
+
 # Function to toggle lock state
 def toggle_lock():
     global is_locked
@@ -489,81 +515,45 @@ def set_sensitivity():
         
     data = request.json
     updated = False
-    old_control = active_control
     
-    # Process active_control first since it affects how we handle other values
+    # Process active_control first
     if 'active_control' in data:
         new_control = data['active_control']
         
         if new_control in ['none', 'a_sensitivity', 'v_sensitivity']:
-            active_control = new_control
-            updated = True
-            
-            # CRITICAL: Reset encoder position when changing active control
-            if old_control != new_control:
-                if new_control == 'a_sensitivity':
-                    # Set encoder position based on current a_sensitivity
-                    # For ASYNC (0), set to high position
-                    if a_sensitivity == 0:
-                        mode_output_encoder.steps = 95
-                    else:
-                        # Map current value to appropriate position (0-94)
-                        normalized_pos = 94 * (a_sensitivity - min_a_sensitivity) / (max_a_sensitivity - min_a_sensitivity)
-                        mode_output_encoder.steps = int(normalized_pos)
-                    print(f"Encoder reset for A sensitivity control: pos={mode_output_encoder.steps}, value={a_sensitivity}")
-                
-                elif new_control == 'v_sensitivity':
-                    # Set encoder position based on current v_sensitivity
-                    if v_sensitivity == 0:
-                        mode_output_encoder.steps = 95
-                    else:
-                        normalized_pos = 94 * (v_sensitivity - min_v_sensitivity) / (max_v_sensitivity - min_v_sensitivity)
-                        mode_output_encoder.steps = int(normalized_pos)
-                    print(f"Encoder reset for V sensitivity control: pos={mode_output_encoder.steps}, value={v_sensitivity}")
-                
-                elif new_control == 'none':
-                    # Reset to middle position when no control is active
-                    mode_output_encoder.steps = 50
-                    print(f"Encoder reset to neutral position: {mode_output_encoder.steps}")
+            # Only update if it's actually changing
+            if active_control != new_control:
+                # Reset encoder state when changing control mode
+                update_mode_output.last_steps = mode_output_encoder.steps
+                active_control = new_control
+                updated = True
+                print(f"Active control changed to: {active_control}")
         else:
             return jsonify({'error': 'Invalid active control value'}), 400
     
-    # Now handle sensitivity value updates
+    # Handle a_sensitivity
     if 'a_sensitivity' in data:
         try:
             new_value = float(data['a_sensitivity'])
+            # Validate range
             if new_value == 0 or min_a_sensitivity <= new_value <= max_a_sensitivity:
-                a_sensitivity = new_value
+                a_sensitivity = round(new_value, 1)  # Round to 1 decimal place
                 updated = True
-                
-                # If this sensitivity is currently being controlled, update encoder position
-                if active_control == 'a_sensitivity':
-                    if new_value == 0:  # ASYNC mode
-                        mode_output_encoder.steps = 95
-                    else:
-                        normalized_pos = 94 * (new_value - min_a_sensitivity) / (max_a_sensitivity - min_a_sensitivity)
-                        mode_output_encoder.steps = int(normalized_pos)
-                    print(f"Encoder position updated for A sensitivity: pos={mode_output_encoder.steps}, value={new_value}")
+                print(f"A sensitivity set to: {a_sensitivity}")
             else:
                 return jsonify({'error': f'A sensitivity value out of range ({min_a_sensitivity}-{max_a_sensitivity} or 0)'}), 400
         except Exception as e:
             return jsonify({'error': str(e)}), 400
     
-    # Similar logic for v_sensitivity updates
+    # Handle v_sensitivity
     if 'v_sensitivity' in data:
         try:
             new_value = float(data['v_sensitivity'])
+            # Validate range
             if new_value == 0 or min_v_sensitivity <= new_value <= max_v_sensitivity:
-                v_sensitivity = new_value
+                v_sensitivity = round(new_value, 1)  # Round to 1 decimal place
                 updated = True
-                
-                if active_control == 'v_sensitivity':
-                    if new_value == 0:  # ASYNC mode
-                        mode_output_encoder.steps = 95
-                    else:
-                        normalized_pos = 94 * (new_value - min_v_sensitivity) / (max_v_sensitivity - min_v_sensitivity)
-                        mode_output_encoder.steps = int(normalized_pos)
-                    print(f"Encoder position updated for V sensitivity: pos={mode_output_encoder.steps}, value={new_value}")
+                print(f"V sensitivity set to: {v_sensitivity}")
             else:
                 return jsonify({'error': f'V sensitivity value out of range ({min_v_sensitivity}-{max_v_sensitivity} or 0)'}), 400
         except Exception as e:

@@ -163,6 +163,10 @@ const ControlPanel: React.FC = () => {
     
     // If we're in other settings screens, go back to the mode selection
     if (showDDDSettings || showVVISettings) {
+      if (encoderConnected) {
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      }
       setShowDDDSettings(false);
       setShowVVISettings(false);
       return;

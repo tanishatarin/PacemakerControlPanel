@@ -271,6 +271,39 @@ export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensit
 };
 
 
+// Add a debounce utility function
+const debounce = <F extends (...args: any[]) => any>(
+  func: F,
+  waitFor: number
+): ((...args: Parameters<F>) => void) => {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  
+  return (...args: Parameters<F>): void => {
+    if (timeout !== null) {
+      clearTimeout(timeout);
+    }
+    
+    timeout = setTimeout(() => func(...args), waitFor);
+  };
+};
+
+// Then use it for updateControls calls that relate to sensitivity
+export const updateSensitivityControlDebounced = debounce(
+  async (data: {active_control?: string, a_sensitivity?: number, v_sensitivity?: number}) => {
+    try {
+      const response = await fetch(`${getBaseUrl()}/sensitivity/set`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      await handleApiError(response);
+    } catch (error) {
+      console.error('Error updating sensitivity controls:', error);
+    }
+  },
+  100 // 100ms debounce time
+);
+
 // Add to the polling function to ensure hardware emergency button works
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,

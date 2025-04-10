@@ -56,14 +56,17 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   // Effect to activate the V sensitivity control in hardware
   useEffect(() => {
     if (encoderConnected) {
-      // Set V sensitivity as the active control for the mode output encoder
-      updateControls({ 
-        active_control: 'v_sensitivity',
-        v_sensitivity: vSensitivity
-      }).catch(err => console.error('Failed to set active control:', err));
+      // Set V sensitivity as the active control with a slight delay
+      const timer = setTimeout(() => {
+        updateControls({ 
+          active_control: 'v_sensitivity',
+          v_sensitivity: vSensitivity
+        }).catch(err => console.error('Failed to set active control:', err));
+      }, 50);
       
       // Reset active control when component unmounts
       return () => {
+        clearTimeout(timer);
         updateControls({ active_control: 'none' })
           .catch(err => console.error('Failed to reset active control:', err));
       };
