@@ -375,7 +375,6 @@ rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
 mode_output_encoder.when_rotated = update_mode_output
-mode_output_encoder._when_rotated.wait_time = 0.01  # Reduce wait time between events
 lock_button.when_pressed = toggle_lock
 
 up_button.when_released = handle_up_button
