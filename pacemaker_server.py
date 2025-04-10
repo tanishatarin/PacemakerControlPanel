@@ -15,7 +15,8 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 # Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
-mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
+# mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
+mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False, bounce_time=0.001)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
 lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
@@ -243,45 +244,64 @@ def update_v_output():
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
+
 def update_mode_output():
     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder
-    # Skip updating if locked or if no control is active
+    
+    # Skip processing if appropriate
     if is_locked or active_control == 'none':
         return
     
-    # Get current steps from encoder
+    # Get the current encoder steps
     current_steps = mode_output_encoder.steps
     
-    # Store steps to track changes
-    last_steps = getattr(update_mode_output, 'last_steps', current_steps)
-    update_mode_output.last_steps = current_steps
+    # Initialize last_steps if not already set
+    if not hasattr(update_mode_output, 'last_steps'):
+        update_mode_output.last_steps = current_steps
+        return
     
-    # Calculate step difference
-    step_diff = current_steps - last_steps
+    # Calculate step difference with more sensitivity (reduce threshold)
+    step_diff = current_steps - update_mode_output.last_steps
     
-    # Only process if there's movement
-    if step_diff == 0:
+    # Only process if there's real movement
+    if abs(step_diff) < 1:  # Reduce movement threshold
         return
         
-    # Determine direction
-    direction = 1 if step_diff > 0 else -1
+    # Update last_steps immediately to prevent lag
+    update_mode_output.last_steps = current_steps
+    
+        
+    # Determine direction - REVERSED for proper behavior
+    # When turning clockwise, step_diff is positive, but we want to decrease sensitivity value
+    direction = -1 if step_diff > 0 else 1
     
     # Process based on active control
     if active_control == 'a_sensitivity':
+        # Get a finer step size for better precision
+        if a_sensitivity < 1:
+            step_size = 0.1  # Finer control at the low end of range
+        elif a_sensitivity < 2:
+            step_size = 0.2
+        elif a_sensitivity < 5:
+            step_size = 0.5
+        else:
+            step_size = 1.0
         # Skip if in DOO mode
         if current_mode == 5:
             return
             
         # Get appropriate step size
-        step_size = get_sensitivity_step_size(a_sensitivity, True)
+        # step_size = get_sensitivity_step_size(a_sensitivity, True)
         
         # Handle special case for ASYNC (0)
         if a_sensitivity == 0 and direction < 0:
             # Going from ASYNC to minimum sensitivity
             a_sensitivity = min_a_sensitivity
+            print(f"A Sensitivity: ASYNC -> {a_sensitivity} mV")
         elif a_sensitivity == min_a_sensitivity and direction > 0:
             # Going from minimum sensitivity to ASYNC
             a_sensitivity = 0
+            print(f"A Sensitivity: {min_a_sensitivity} mV -> ASYNC")
         else:
             # Normal adjustment
             if a_sensitivity > 0:  # Only adjust if not in ASYNC mode
@@ -289,24 +309,40 @@ def update_mode_output():
                 # Ensure within range
                 if min_a_sensitivity <= new_value <= max_a_sensitivity:
                     a_sensitivity = new_value
-                    
-        print(f"A Sensitivity updated: {a_sensitivity} mV (direction={direction}, step={step_size})")
+                    print(f"A Sensitivity adjusted: {a_sensitivity} mV (step={step_size})")
             
     elif active_control == 'v_sensitivity':
+        
+        # Use smaller steps for more precision
+        if v_sensitivity < 1:
+            step_size = 0.1  # Even finer control at very low values
+        elif v_sensitivity < 2:
+            step_size = 0.2
+        elif v_sensitivity < 5:
+            step_size = 0.5
+        elif v_sensitivity < 10:
+            step_size = 1.0
+        else:
+            step_size = 2.0
+            
+        new_value = round(v_sensitivity + (direction * step_size), 1)
+
         # Skip if in DOO mode
         if current_mode == 5:
             return
             
-        # Get appropriate step size
-        step_size = get_sensitivity_step_size(v_sensitivity, False)
+        # Get appropriate step size for V sensitivity
+        # step_size = get_sensitivity_step_size(v_sensitivity, False)
         
         # Handle special case for ASYNC (0)
         if v_sensitivity == 0 and direction < 0:
             # Going from ASYNC to minimum sensitivity
             v_sensitivity = min_v_sensitivity
+            print(f"V Sensitivity: ASYNC -> {v_sensitivity} mV")
         elif v_sensitivity == min_v_sensitivity and direction > 0:
             # Going from minimum sensitivity to ASYNC
             v_sensitivity = 0
+            print(f"V Sensitivity: {min_v_sensitivity} mV -> ASYNC")
         else:
             # Normal adjustment
             if v_sensitivity > 0:  # Only adjust if not in ASYNC mode
@@ -314,8 +350,8 @@ def update_mode_output():
                 # Ensure within range
                 if min_v_sensitivity <= new_value <= max_v_sensitivity:
                     v_sensitivity = new_value
-                    
-        print(f"V Sensitivity updated: {v_sensitivity} mV (direction={direction}, step={step_size})")
+                    print(f"V Sensitivity adjusted: {v_sensitivity} mV (step={step_size})")
+
 
 # Function to toggle lock state
 def toggle_lock():
@@ -339,6 +375,7 @@ rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
 mode_output_encoder.when_rotated = update_mode_output
+mode_output_encoder._when_rotated.wait_time = 0.01  # Reduce wait time between events
 lock_button.when_pressed = toggle_lock
 
 up_button.when_released = handle_up_button

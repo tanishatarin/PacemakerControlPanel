@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { updateControls } from '../utils/encoderApi';
 
 interface VVISettingsProps {
@@ -54,24 +54,30 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   };
 
   // Effect to activate the V sensitivity control in hardware
-  useEffect(() => {
+  // Add a useCallback function
+  const optimizeEncoderSettings = useCallback(() => {
     if (encoderConnected) {
-      // Set V sensitivity as the active control with a slight delay
-      const timer = setTimeout(() => {
-        updateControls({ 
-          active_control: 'v_sensitivity',
-          v_sensitivity: vSensitivity
-        }).catch(err => console.error('Failed to set active control:', err));
-      }, 50);
-      
-      // Reset active control when component unmounts
-      return () => {
-        clearTimeout(timer);
-        updateControls({ active_control: 'none' })
-          .catch(err => console.error('Failed to reset active control:', err));
-      };
+      // Immediate control setting for less lag
+      updateControls({ 
+        active_control: 'v_sensitivity',
+        v_sensitivity: vSensitivity
+      }).catch(err => console.error('Failed to set control:', err));
     }
   }, [encoderConnected, vSensitivity]);
+
+  // Replace existing useEffect
+  useEffect(() => {
+    if (encoderConnected) {
+      // Immediate execution
+      optimizeEncoderSettings();
+      
+      return () => {
+        // Immediate reset when unmounting
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset control:', err));
+      };
+    }
+}, [encoderConnected, optimizeEncoderSettings]);
 
   const isVSensitivityDisabled = vSensitivity === 0;
 

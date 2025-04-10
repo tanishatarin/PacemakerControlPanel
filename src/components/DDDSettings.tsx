@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { updateControls } from '../utils/encoderApi';
 
 // Interface for the DDD Settings component
@@ -76,33 +76,33 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
 
   // Effect to update hardware encoder active control based on selected setting
   // Inside the useEffect for hardware controls
-  useEffect(() => {
+  // Add this function after the component declaration
+  const optimizeEncoderTransition = useCallback(() => {
     if (encoderConnected && selectedSetting) {
-      // Determine which sensitivity is active
       const controlType = selectedSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
       const sensitivityValue = selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity;
       
-      console.log(`DDD Settings: Setting active control to ${controlType} with value ${sensitivityValue}`);
-      
-      // Use setTimeout to ensure state is stable before API call
-      const timer = setTimeout(() => {
-        updateControls({ 
-          active_control: controlType,
-          [controlType]: sensitivityValue
-        }).catch(err => {
-          console.error('Failed to set active control:', err);
-        });
-      }, 50);
-      
-      // Reset active control when component unmounts
-      return () => {
-        clearTimeout(timer);
-        console.log('DDD Settings: Resetting active control on unmount');
-        updateControls({ active_control: 'none' })
-          .catch(err => console.error('Failed to reset active control:', err));
-      };
+      // Skip debouncing for control type changes to make them immediate
+      updateControls({ 
+        active_control: controlType,
+        [controlType]: sensitivityValue
+      }).catch(err => console.error('Failed to set control:', err));
     }
   }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
+
+  // Replace the existing useEffect with this
+  useEffect(() => {
+    if (encoderConnected) {
+      // Immediate execution for less lag
+      optimizeEncoderTransition();
+      
+      return () => {
+        // Immediate reset when unmounting
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset control:', err));
+      };
+    }
+  }, [encoderConnected, selectedSetting, optimizeEncoderTransition]);
 
   // Check if sensitivities are disabled
   const isASensitivityDisabled = settings.aSensitivity === 0;
