@@ -15,7 +15,8 @@ import {
   toggleLock, 
   getLockState, 
   ApiStatus,
-  EncoderControlData
+  EncoderControlData,
+  getSensitivityDebug
 } from '../utils/encoderApi';
 
 
@@ -297,6 +298,16 @@ const ControlPanel: React.FC = () => {
       }, 500);
     }
   };
+
+  useEffect(() => {
+    if (encoderConnected) {
+      const interval = setInterval(() => {
+        getSensitivityDebug();
+      }, 2000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [encoderConnected]);
   
   // Start encoder polling if connected
   useEffect(() => {
@@ -710,6 +721,7 @@ const ControlPanel: React.FC = () => {
           isLocked={isLocked}
           selectedSetting={selectedDDDSetting}
           onNavigate={handleModeNavigation}
+          encoderConnected={encoderConnected} // Add this line
         />
       );
     } else if (showVVISettings) {
@@ -719,6 +731,7 @@ const ControlPanel: React.FC = () => {
           onVSensitivityChange={handleVVISensitivityChange}
           onBack={handleLeftArrowPress}
           isLocked={isLocked}
+          encoderConnected={encoderConnected} // Add this line
         />
       );
     } else if (showDOOSettings) {

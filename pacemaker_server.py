@@ -41,6 +41,11 @@ current_v_output = 10.0
 mode_output_encoder.steps = 50 # 5.0 mA initially
 current_mode_output = 5.0 
 
+# Add these initializations near the top with other initial values
+a_sensitivity = 0.5  # Initial A sensitivity (mV)
+v_sensitivity = 2.0  # Initial V sensitivity (mV)
+active_control = 'none'  # Initial active control (none, a_sensitivity, v_sensitivity)
+
 # Lock state
 is_locked = False
 
@@ -247,58 +252,63 @@ def update_mode_output():
     
     # Get raw steps directly from encoder
     current_steps = mode_output_encoder.steps
+    
+    # Calculate change since last reading
+    diff = current_steps - current_mode_output
     current_mode_output = current_steps  # Update tracking variable
+    
+    # Only process if there's a change
+    if diff == 0:
+        return
+    
+    print(f"Mode encoder turned: diff={diff}, active_control={active_control}")
+    
     
     # IMPORTANT: Make clockwise increase values and counter-clockwise decrease values
     # This fixes the reversed direction issue
     
+        # Handle A sensitivity control
     if active_control == 'a_sensitivity':
-        # Create a direct mapping from encoder to sensitivity
-        # This ensures we won't get stuck due to state tracking issues
+        # Determine step size based on current value
+        step_size = get_sensitivity_step_size(a_sensitivity, True)
         
-        # Map the raw encoder value to a sensitivity value range
-        # Normalize steps to be in range [0, 100]
-        normalized_steps = (current_steps % 100)
+        # Update sensitivity based on rotation direction
+        if diff > 0:  # Clockwise rotation = decrease sensitivity value (more sensitive)
+            new_value = max(min_a_sensitivity, a_sensitivity - step_size)
+        else:  # Counter-clockwise rotation = increase sensitivity value (less sensitive)
+            if a_sensitivity == 0:  # Coming out of ASYNC mode
+                new_value = max_a_sensitivity
+            else:
+                new_value = min(max_a_sensitivity, a_sensitivity + step_size)
         
-        # Map normalized steps to sensitivity range
-        # Note: Reversed calculation to fix the direction
-        if normalized_steps >= 95:  # Top 5% of range = ASYNC (0 mV)
-            new_sensitivity = 0
-        else:
-            # Map 0-95 to max_sensitivity down to min_sensitivity
-            # This way clockwise = more sensitive (lower mV value)
-            new_sensitivity = max_a_sensitivity - (normalized_steps / 95) * (max_a_sensitivity - min_a_sensitivity)
-            # Round to a reasonable step size to avoid tiny changes
-            step_size = get_sensitivity_step_size(new_sensitivity, True)
-            new_sensitivity = round(new_sensitivity / step_size) * step_size
+        # Special case: ASYNC mode (0 mV)
+        if a_sensitivity > 0 and new_value >= max_a_sensitivity:
+            new_value = 0  # Set to ASYNC when we go past max
         
-        # Only log and update if there's an actual change
-        if abs(new_sensitivity - a_sensitivity) > 0.001:
-            # logger.info(f"A Sensitivity direct update: {a_sensitivity} -> {new_sensitivity} mV (steps={current_steps})")
-            a_sensitivity = new_sensitivity
+        a_sensitivity = round(new_value, 1)
+        print(f"A Sensitivity updated: {a_sensitivity} mV (step_size: {step_size})")
+    
             
+    # Handle V sensitivity control - similar logic to A sensitivity
     elif active_control == 'v_sensitivity':
-        # Same approach for V sensitivity
-        # Normalize steps to be in range [0, 100]
-        normalized_steps = (current_steps % 100)
+        step_size = get_sensitivity_step_size(v_sensitivity, False)
         
-        # Map normalized steps to sensitivity range
-        # Note: Reversed calculation to fix the direction
-        if normalized_steps >= 95:  # Top 5% of range = ASYNC (0 mV)
-            new_sensitivity = 0
-        else:
-            # Map 0-95 to max_sensitivity down to min_sensitivity
-            # This way clockwise = more sensitive (lower mV value)
-            new_sensitivity = max_v_sensitivity - (normalized_steps / 95) * (max_v_sensitivity - min_v_sensitivity)
-            # Round to a reasonable step size to avoid tiny changes
-            step_size = get_sensitivity_step_size(new_sensitivity, False)
-            new_sensitivity = round(new_sensitivity / step_size) * step_size
+        if diff > 0:  # Clockwise = decrease value (more sensitive)
+            new_value = max(min_v_sensitivity, v_sensitivity - step_size)
+        else:  # Counter-clockwise = increase value (less sensitive)
+            if v_sensitivity == 0:  # Coming out of ASYNC mode
+                new_value = max_v_sensitivity
+            else:
+                new_value = min(max_v_sensitivity, v_sensitivity + step_size)
         
-        # Only log and update if there's an actual change
-        if abs(new_sensitivity - v_sensitivity) > 0.001:
-            # logger.info(f"V Sensitivity direct update: {v_sensitivity} -> {new_sensitivity} mV (steps={current_steps})")
-            v_sensitivity = new_sensitivity
-
+        # Special case: ASYNC mode (0 mV)
+        if v_sensitivity > 0 and new_value >= max_v_sensitivity:
+            new_value = 0  # Set to ASYNC when we go past max
+        
+        v_sensitivity = round(new_value, 1)
+        print(f"V Sensitivity updated: {v_sensitivity} mV (step_size: {step_size})")
+        
+        
 # Function to toggle lock state
 def toggle_lock():
     global is_locked
@@ -624,6 +634,9 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
+        'a_sensitivity': a_sensitivity,  # Add this
+        'v_sensitivity': v_sensitivity,  # Add this
+        'active_control': active_control,  # Add this
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,

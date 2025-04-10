@@ -107,6 +107,25 @@ export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
   }
 };
 
+// Add this in encoderApi.ts
+export const getSensitivityDebug = async (): Promise<void> => {
+  try {
+    const response = await fetch(`${getBaseUrl()}/sensitivity`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('Sensitivity API response:', data);
+    }
+  } catch (error) {
+    console.error('Error getting sensitivity debug:', error);
+  }
+};
+
 // Update control values on the hardware
 export const updateControls = async (data: EncoderControlData): Promise<void> => {
   try {
