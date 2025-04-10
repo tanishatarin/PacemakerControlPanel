@@ -66,18 +66,36 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   }, [encoderConnected, vSensitivity]);
 
   // Replace existing useEffect
-  useEffect(() => {
-    if (encoderConnected) {
-      // Immediate execution
-      optimizeEncoderSettings();
-      
-      return () => {
-        // Immediate reset when unmounting
-        updateControls({ active_control: 'none' })
-          .catch(err => console.error('Failed to reset control:', err));
-      };
-    }
-}, [encoderConnected, optimizeEncoderSettings]);
+  // Effect to activate the V sensitivity control in hardware
+useEffect(() => {
+  if (encoderConnected) {
+    // Set V sensitivity as the active control with a slight delay
+    const timer = setTimeout(() => {
+      updateControls({ 
+        active_control: 'v_sensitivity',
+        v_sensitivity: vSensitivity
+      }).catch(err => console.error('Failed to set active control:', err));
+    }, 50);
+    
+    // Add a periodic reset to prevent sticking
+    const resetInterval = setInterval(() => {
+      // Only refresh the control if we're still mounted
+      updateControls({
+        active_control: 'v_sensitivity',
+        v_sensitivity: vSensitivity
+      }).catch(err => console.error('Failed to refresh control:', err));
+    }, 5000); // Check every 5 seconds
+    
+    // Reset active control when component unmounts
+    return () => {
+      clearTimeout(timer);
+      clearInterval(resetInterval);
+      updateControls({ active_control: 'none' })
+        .catch(err => console.error('Failed to reset active control:', err));
+    };
+  }
+}, [encoderConnected, vSensitivity]);
+
 
   const isVSensitivityDisabled = vSensitivity === 0;
 

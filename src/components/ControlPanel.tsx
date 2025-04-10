@@ -16,7 +16,8 @@ import {
   getLockState, 
   ApiStatus,
   EncoderControlData,
-  getSensitivityDebug
+  getSensitivityDebug,
+  resetEncoder
 } from '../utils/encoderApi';
 
 
@@ -302,6 +303,80 @@ const ControlPanel: React.FC = () => {
       }, 500);
     }
   };
+
+  // Add an emergency reset function
+const handleEncoderReset = useCallback(() => {
+  if (encoderConnected) {
+    console.log("Performing emergency encoder reset");
+    
+    // Reset the encoder
+    resetEncoder('mode').catch(err => console.error('Failed encoder reset:', err));
+    
+    // Also reset the active control
+    setTimeout(() => {
+      if (showDDDSettings) {
+        // Re-establish the DDD settings active control
+        const controlType = selectedDDDSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
+        const sensitivityValue = selectedDDDSetting === 'aSensitivity' 
+          ? dddSettings.aSensitivity 
+          : dddSettings.vSensitivity;
+        
+        updateControls({
+          active_control: controlType,
+          [controlType]: sensitivityValue
+        }).catch(err => console.error('Failed to reset control:', err));
+      } else if (showVVISettings) {
+        // Re-establish the VVI settings active control
+        updateControls({
+          active_control: 'v_sensitivity',
+          v_sensitivity: vviSensitivity
+        }).catch(err => console.error('Failed to reset control:', err));
+      }
+    }, 200);
+  }
+}, [encoderConnected, showDDDSettings, showVVISettings, selectedDDDSetting]);
+
+// Add a listener to detect potential stuck encoder
+useEffect(() => {
+  let lastSensitivityValues = {
+    a: dddSettings.aSensitivity,
+    v: dddSettings.vSensitivity,
+    vvi: vviSensitivity,
+    timestamp: Date.now()
+  };
+  
+  const checkStuckInterval = setInterval(() => {
+    // If we're in a settings screen and connected to hardware
+    if (encoderConnected && (showDDDSettings || showVVISettings)) {
+      const now = Date.now();
+      const timeSinceLastChange = now - lastSensitivityValues.timestamp;
+      
+      // If values haven't changed in 10 seconds and we're actively in settings
+      if (timeSinceLastChange > 10000) {
+        console.log("Long period without sensitivity changes - doing safety reset");
+        handleEncoderReset();
+        
+        // Update the timestamp to avoid multiple resets
+        lastSensitivityValues.timestamp = now;
+      }
+    }
+    
+    // Update our tracked values if they've changed
+    if (dddSettings.aSensitivity !== lastSensitivityValues.a ||
+        dddSettings.vSensitivity !== lastSensitivityValues.v ||
+        vviSensitivity !== lastSensitivityValues.vvi) {
+      
+      lastSensitivityValues = {
+        a: dddSettings.aSensitivity,
+        v: dddSettings.vSensitivity,
+        vvi: vviSensitivity,
+        timestamp: Date.now()
+      };
+    }
+  }, 5000); // Check every 5 seconds
+  
+  return () => clearInterval(checkStuckInterval);
+}, [encoderConnected, showDDDSettings, showVVISettings, dddSettings, vviSensitivity, handleEncoderReset]);
 
   useEffect(() => {
     if (encoderConnected) {

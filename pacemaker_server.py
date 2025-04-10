@@ -86,6 +86,9 @@ last_left_press_time = 0
 emergency_button_pressed = False
 last_emergency_press_time = 0
 
+last_mode_encoder_activity = time.time()
+
+
 def handle_down_button():
     global last_down_press_time, down_button_pressed
     current_time = time.time()
@@ -245,112 +248,104 @@ def update_v_output():
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
 
+# Completely rewrite the update_mode_output function
 def update_mode_output():
-    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder
+    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity
     
-    # Skip processing if appropriate
+    # Skip if locked or no active control
     if is_locked or active_control == 'none':
         return
     
-    # Get the current encoder steps
+    # Get current steps
     current_steps = mode_output_encoder.steps
     
-    # Initialize last_steps if not already set
+    # Initialize tracking if needed
     if not hasattr(update_mode_output, 'last_steps'):
         update_mode_output.last_steps = current_steps
         return
     
-    # Calculate step difference with more sensitivity (reduce threshold)
+    # Calculate difference
     step_diff = current_steps - update_mode_output.last_steps
     
-    # Only process if there's real movement
-    if abs(step_diff) < 1:  # Reduce movement threshold
+    # Skip if no real movement
+    if step_diff == 0:
         return
         
-    # Update last_steps immediately to prevent lag
+    # Update activity timestamp
+    last_mode_encoder_activity = time.time()
+    
+    # Record the steps IMMEDIATELY to prevent drift
     update_mode_output.last_steps = current_steps
     
-        
-    # Determine direction - REVERSED for proper behavior
-    # When turning clockwise, step_diff is positive, but we want to decrease sensitivity value
+    # Movement direction (reversed for expected behavior)
     direction = -1 if step_diff > 0 else 1
     
-    # Process based on active control
+    # Process based on control type
     if active_control == 'a_sensitivity':
-        # Get a finer step size for better precision
-        if a_sensitivity < 1:
-            step_size = 0.1  # Finer control at the low end of range
-        elif a_sensitivity < 2:
-            step_size = 0.2
-        elif a_sensitivity < 5:
-            step_size = 0.5
-        else:
-            step_size = 1.0
-        # Skip if in DOO mode
-        if current_mode == 5:
-            return
-            
-        # Get appropriate step size
-        # step_size = get_sensitivity_step_size(a_sensitivity, True)
+        # Handle A sensitivity adjustments
+        step_size = get_sensitivity_step_size(a_sensitivity, True)
         
-        # Handle special case for ASYNC (0)
         if a_sensitivity == 0 and direction < 0:
-            # Going from ASYNC to minimum sensitivity
             a_sensitivity = min_a_sensitivity
-            print(f"A Sensitivity: ASYNC -> {a_sensitivity} mV")
+            print(f"A Sensitivity: ASYNC → {a_sensitivity} mV")
         elif a_sensitivity == min_a_sensitivity and direction > 0:
-            # Going from minimum sensitivity to ASYNC
             a_sensitivity = 0
-            print(f"A Sensitivity: {min_a_sensitivity} mV -> ASYNC")
+            print(f"A Sensitivity: {min_a_sensitivity} mV → ASYNC")
         else:
-            # Normal adjustment
-            if a_sensitivity > 0:  # Only adjust if not in ASYNC mode
+            if a_sensitivity > 0:
                 new_value = a_sensitivity + (direction * step_size)
-                # Ensure within range
                 if min_a_sensitivity <= new_value <= max_a_sensitivity:
-                    a_sensitivity = new_value
-                    print(f"A Sensitivity adjusted: {a_sensitivity} mV (step={step_size})")
-            
+                    a_sensitivity = round(new_value, 1)  # Round to 1 decimal
+                    print(f"A Sensitivity: {a_sensitivity} mV")
+    
     elif active_control == 'v_sensitivity':
+        # Handle V sensitivity adjustments
+        step_size = get_sensitivity_step_size(v_sensitivity, False)
         
-        # Use smaller steps for more precision
-        if v_sensitivity < 1:
-            step_size = 0.1  # Even finer control at very low values
-        elif v_sensitivity < 2:
-            step_size = 0.2
-        elif v_sensitivity < 5:
-            step_size = 0.5
-        elif v_sensitivity < 10:
-            step_size = 1.0
-        else:
-            step_size = 2.0
-            
-        new_value = round(v_sensitivity + (direction * step_size), 1)
-
-        # Skip if in DOO mode
-        if current_mode == 5:
-            return
-            
-        # Get appropriate step size for V sensitivity
-        # step_size = get_sensitivity_step_size(v_sensitivity, False)
-        
-        # Handle special case for ASYNC (0)
         if v_sensitivity == 0 and direction < 0:
-            # Going from ASYNC to minimum sensitivity
             v_sensitivity = min_v_sensitivity
-            print(f"V Sensitivity: ASYNC -> {v_sensitivity} mV")
+            print(f"V Sensitivity: ASYNC → {v_sensitivity} mV")
         elif v_sensitivity == min_v_sensitivity and direction > 0:
-            # Going from minimum sensitivity to ASYNC
             v_sensitivity = 0
-            print(f"V Sensitivity: {min_v_sensitivity} mV -> ASYNC")
+            print(f"V Sensitivity: {min_v_sensitivity} mV → ASYNC")
         else:
-            # Normal adjustment
-            if v_sensitivity > 0:  # Only adjust if not in ASYNC mode
+            if v_sensitivity > 0:
                 new_value = v_sensitivity + (direction * step_size)
-                # Ensure within range
                 if min_v_sensitivity <= new_value <= max_v_sensitivity:
-                    v_sensitivity = new_value
-                    print(f"V Sensitivity adjusted: {v_sensitivity} mV (step={step_size})")
+                    v_sensitivity = round(new_value, 1)  # Round to 1 decimal
+                    print(f"V Sensitivity: {v_sensitivity} mV")
+
+
+# Add near your other hardware functions
+def hardware_reset_mode_encoder():
+    """Force reset of mode encoder state at hardware level"""
+    global mode_output_encoder, update_mode_output
+    
+    # Get current position
+    current_steps = mode_output_encoder.steps
+    
+    # Force reset tracking variable
+    if hasattr(update_mode_output, 'last_steps'):
+        update_mode_output.last_steps = current_steps
+    
+    print(f"Hard reset of mode encoder to steps={current_steps}")
+
+
+# Add this function to periodically reset the encoder state if it gets stuck
+def reset_stuck_encoders():
+    global mode_output_encoder, last_mode_encoder_activity
+    
+    current_time = time.time()
+    
+    # If it's been more than 3 seconds since last activity and there's an active control
+    if current_time - last_mode_encoder_activity > 3 and active_control != 'none':
+        # Reset the steps to match the logical state
+        current_steps = mode_output_encoder.steps
+        
+        # Only reset if update_mode_output.last_steps exists and differs
+        if hasattr(update_mode_output, 'last_steps') and update_mode_output.last_steps != current_steps:
+            print(f"Resetting stuck encoder: {update_mode_output.last_steps} → {current_steps}")
+            update_mode_output.last_steps = current_steps
 
 
 # Function to toggle lock state
@@ -543,7 +538,7 @@ def get_sensitivity():
 
 @app.route('/api/sensitivity/set', methods=['POST'])
 def set_sensitivity():
-    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder
+    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity
     
     # Check if locked
     if is_locked:
@@ -552,18 +547,27 @@ def set_sensitivity():
     data = request.json
     updated = False
     
-    # Process active_control first
+    # Handle active_control changes
     if 'active_control' in data:
         new_control = data['active_control']
         
         if new_control in ['none', 'a_sensitivity', 'v_sensitivity']:
-            # Only update if it's actually changing
             if active_control != new_control:
-                # Reset encoder state when changing control mode
-                update_mode_output.last_steps = mode_output_encoder.steps
+                # Important: Reset encoder state when changing controls
                 active_control = new_control
+                # Force reset of encoder tracking state
+                if hasattr(update_mode_output, 'last_steps'):
+                    delattr(update_mode_output, 'last_steps')
+                last_mode_encoder_activity = time.time()
                 updated = True
                 print(f"Active control changed to: {active_control}")
+                
+                # Set encoder position appropriately for the new control
+                if new_control == 'none':
+                    mode_output_encoder.steps = 50  # Neutral position
+                else:
+                    # Don't change encoder steps - just reset tracking
+                    pass
         else:
             return jsonify({'error': 'Invalid active control value'}), 400
     
@@ -595,7 +599,11 @@ def set_sensitivity():
         except Exception as e:
             return jsonify({'error': str(e)}), 400
     
+     # Return success
     if updated:
+        # Also reset the watchdog timer
+        last_mode_encoder_activity = time.time()
+        
         return jsonify({
             'success': True,
             'a_sensitivity': a_sensitivity,
@@ -604,7 +612,19 @@ def set_sensitivity():
         })
     else:
         return jsonify({'error': 'No valid parameters provided'}), 400
-
+    
+# Add a new API endpoint for emergency reset
+@app.route('/api/reset_encoder', methods=['POST'])
+def api_reset_encoder():
+    encoder_type = request.json.get('type', 'mode')
+    
+    if encoder_type == 'mode':
+        hardware_reset_mode_encoder()
+        return jsonify({'success': True, 'message': 'Mode encoder reset successful'})
+    else:
+        return jsonify({'error': 'Unknown encoder type'}), 400
+     
+    
 # API endpoint for setting mode
 @app.route('/api/mode/set', methods=['POST'])
 def set_mode():

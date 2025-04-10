@@ -73,6 +73,20 @@ const handleApiError = async (response: Response) => {
   return response;
 };
 
+// Add this function to your encoderApi.ts
+export const resetEncoder = async (type: string = 'mode'): Promise<void> => {
+  try {
+    await fetch(`${getBaseUrl()}/reset_encoder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type }),
+    });
+    console.log(`Reset ${type} encoder requested`);
+  } catch (error) {
+    console.error(`Failed to reset ${type} encoder:`, error);
+  }
+};
+
 // Check encoder API status
 export const checkEncoderStatus = async (): Promise<ApiStatus | null> => {
   try {

@@ -92,17 +92,43 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
 
   // Replace the existing useEffect with this
   useEffect(() => {
-    if (encoderConnected) {
-      // Immediate execution for less lag
-      optimizeEncoderTransition();
+    if (encoderConnected && selectedSetting) {
+      // Determine which sensitivity is active
+      const controlType = selectedSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
+      const sensitivityValue = selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity;
       
+      console.log(`DDD Settings: Setting active control to ${controlType} with value ${sensitivityValue}`);
+      
+      // Use setTimeout to ensure state is stable before API call
+      const timer = setTimeout(() => {
+        updateControls({ 
+          active_control: controlType,
+          [controlType]: sensitivityValue
+        }).catch(err => {
+          console.error('Failed to set active control:', err);
+        });
+      }, 50);
+      
+      // Add a periodic reset to prevent sticking
+      const resetInterval = setInterval(() => {
+        // Refresh the control with current values
+        updateControls({
+          active_control: controlType,
+          [controlType]: selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity
+        }).catch(err => console.error('Failed to refresh control:', err));
+      }, 5000); // Check every 5 seconds
+      
+      // Reset active control when component unmounts
       return () => {
-        // Immediate reset when unmounting
+        clearTimeout(timer);
+        clearInterval(resetInterval);
+        console.log('DDD Settings: Resetting active control on unmount');
         updateControls({ active_control: 'none' })
-          .catch(err => console.error('Failed to reset control:', err));
+          .catch(err => console.error('Failed to reset active control:', err));
       };
     }
-  }, [encoderConnected, selectedSetting, optimizeEncoderTransition]);
+  }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
+
 
   // Check if sensitivities are disabled
   const isASensitivityDisabled = settings.aSensitivity === 0;
