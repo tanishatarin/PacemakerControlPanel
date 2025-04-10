@@ -64,3 +64,10 @@
     @apply bg-background text-foreground;
   }
 }
+
+.rotated-app {
+  transform: rotate(90deg);
+  width: 100vh; /* use viewport height because it's now the new "width" after rotation */
+  height: 100vw;
+  overflow-x: hidden;
+}
