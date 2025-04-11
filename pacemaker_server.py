@@ -15,8 +15,8 @@ a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 # Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 
-# mode 
-mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False, bounce_time=0.005)
+# mode Clock 8, DT 7
+mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
 
 # Set up the Lock Button (from the screenshot, using GPIO 17)
 lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
@@ -257,7 +257,6 @@ def update_v_output():
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
 
-# Update this function in pacemaker_server.py
 def update_mode_output():
     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag
     
@@ -273,7 +272,7 @@ def update_mode_output():
         update_mode_output.last_steps = current_steps
         return
     
-    # Calculate difference - ONE movement counts as a step (fix for 2 clicks = 1 step issue)
+    # Calculate difference
     step_diff = current_steps - update_mode_output.last_steps
     
     # Only process if there's actual movement
@@ -284,72 +283,42 @@ def update_mode_output():
     last_mode_encoder_activity = time.time()
     encoder_activity_flag = True
     
-    # Update tracking immediately
+    # Update tracking
     update_mode_output.last_steps = current_steps
-    
-    # Determine direction (negative or positive movement)
-    direction = -1 if step_diff > 0 else 1
     
     # Process based on control type
     if active_control == 'a_sensitivity':
-        # Handle A sensitivity adjustments
-        step_size = get_sensitivity_step_size(a_sensitivity, True)
-        
-        if a_sensitivity == 0 and direction < 0:  # Coming out of ASYNC mode
-            a_sensitivity = min_a_sensitivity
-            print(f"A Sensitivity: ASYNC → {a_sensitivity} mV")
-        elif a_sensitivity == min_a_sensitivity and direction > 0:  # Going into ASYNC mode
-            a_sensitivity = 0
-            print(f"A Sensitivity: {min_a_sensitivity} mV → ASYNC")
-        elif direction < 0:  # Moving toward higher values
-            # Let's ensure we can reach higher values when we're at or near minimum
-            if a_sensitivity == min_a_sensitivity:
-                a_sensitivity = min_a_sensitivity + step_size
-            else:
-                new_value = a_sensitivity + (direction * step_size)
-                # Ensure we don't exceed maximum
-                a_sensitivity = max(min_a_sensitivity, min(max_a_sensitivity, new_value))
-            a_sensitivity = round(a_sensitivity, 1)  # Round to one decimal place
-            print(f"A Sensitivity: {a_sensitivity} mV")
-        else:  # Moving toward lower values (direction > 0)
-            # Handle the edge case when approaching the minimum
-            if a_sensitivity - step_size < min_a_sensitivity:
-                a_sensitivity = min_a_sensitivity
-            else:
-                new_value = a_sensitivity + (direction * step_size)
-                a_sensitivity = max(min_a_sensitivity, new_value)
-            a_sensitivity = round(a_sensitivity, 1)  # Round to one decimal place
-            print(f"A Sensitivity: {a_sensitivity} mV")
+        # For A sensitivity (clockwise decreases, counter-clockwise increases)
+        if step_diff > 0:  # Clockwise - decrease
+            if a_sensitivity > min_a_sensitivity:
+                a_sensitivity = max(min_a_sensitivity, a_sensitivity - 0.1)
+            elif a_sensitivity == min_a_sensitivity:
+                a_sensitivity = 0  # Set to ASYNC
+        else:  # Counter-clockwise - increase
+            if a_sensitivity == 0:
+                a_sensitivity = min_a_sensitivity  # Come out of ASYNC
+            elif a_sensitivity < max_a_sensitivity:
+                a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
+                
+        a_sensitivity = round(a_sensitivity, 1)
+        print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
     
     elif active_control == 'v_sensitivity':
-        # Handle V sensitivity adjustments
-        step_size = get_sensitivity_step_size(v_sensitivity, False)
+        # For V sensitivity (clockwise decreases, counter-clockwise increases)
+        if step_diff > 0:  # Clockwise - decrease
+            if v_sensitivity > min_v_sensitivity:
+                v_sensitivity = max(min_v_sensitivity, v_sensitivity - 0.2)
+            elif v_sensitivity == min_v_sensitivity:
+                v_sensitivity = 0  # Set to ASYNC
+        else:  # Counter-clockwise - increase
+            if v_sensitivity == 0:
+                v_sensitivity = min_v_sensitivity  # Come out of ASYNC
+            elif v_sensitivity < max_v_sensitivity:
+                v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
+                
+        v_sensitivity = round(v_sensitivity, 1)
+        print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
         
-        if v_sensitivity == 0 and direction < 0:  # Coming out of ASYNC mode
-            v_sensitivity = min_v_sensitivity
-            print(f"V Sensitivity: ASYNC → {v_sensitivity} mV")
-        elif v_sensitivity == min_v_sensitivity and direction > 0:  # Going into ASYNC mode
-            v_sensitivity = 0
-            print(f"V Sensitivity: {min_v_sensitivity} mV → ASYNC")
-        elif direction < 0:  # Moving toward higher values
-            # Let's ensure we can reach higher values when we're at or near minimum
-            if v_sensitivity == min_v_sensitivity:
-                v_sensitivity = min_v_sensitivity + step_size
-            else:
-                new_value = v_sensitivity + (direction * step_size)
-                # Ensure we don't exceed maximum
-                v_sensitivity = max(min_v_sensitivity, min(max_v_sensitivity, new_value))
-            v_sensitivity = round(v_sensitivity, 1)  # Round to one decimal place
-            print(f"V Sensitivity: {v_sensitivity} mV")
-        else:  # Moving toward lower values (direction > 0)
-            # Handle the edge case when approaching the minimum
-            if v_sensitivity - step_size < min_v_sensitivity:
-                v_sensitivity = min_v_sensitivity
-            else:
-                new_value = v_sensitivity + (direction * step_size)
-                v_sensitivity = max(min_v_sensitivity, new_value)
-            v_sensitivity = round(v_sensitivity, 1)  # Round to one decimal place
-            print(f"V Sensitivity: {v_sensitivity} mV")
 
 # Add near your other hardware functions
 def hardware_reset_mode_encoder():
