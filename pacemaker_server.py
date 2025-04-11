@@ -271,23 +271,21 @@ def update_mode_output():
         update_mode_output.last_steps = current_steps
         return
     
-    # Calculate difference
+    # Calculate difference - ANY movement counts as a step
     step_diff = current_steps - update_mode_output.last_steps
     
-    # Skip if no real movement
+    # Only process if there's actual movement
     if step_diff == 0:
         return
     
-    # Update activity timestamp
+    # Update activity timestamp and set flag
     last_mode_encoder_activity = time.time()
-    
-    # Set encoder activity flag to true (will be sent in API response)
     encoder_activity_flag = True
     
-    # Record the steps IMMEDIATELY to prevent drift
+    # Update tracking immediately
     update_mode_output.last_steps = current_steps
     
-    # Movement direction (reversed for expected behavior)
+    # Direction is reversed for expected behavior
     direction = -1 if step_diff > 0 else 1
     
     # Process based on control type
