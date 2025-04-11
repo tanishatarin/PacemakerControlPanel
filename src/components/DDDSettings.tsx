@@ -32,14 +32,6 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
     onSettingsChange(key, value);
   };
 
-  // Function to get slider color based on value
-  const getSliderColor = (value: number, min: number, max: number) => {
-    const percentage = ((value - min) / (max - min)) * 100;
-    if (percentage < 33) return '#4ade80'; // green
-    if (percentage < 66) return '#fbbf24'; // yellow
-    return '#ef4444'; // red
-  };
-
   // Convert value functions
   const aSliderToValue = (sliderValue: number): number => {
     if (sliderValue >= 99.5) return 0;

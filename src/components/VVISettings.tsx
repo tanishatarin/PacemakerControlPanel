@@ -15,21 +15,6 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   isLocked,
   encoderConnected = false
 }) => {
-  // Function to get slider color based on value
-  const getSliderColor = (value: number, min: number, max: number) => {
-    const percentage = ((value - min) / (max - min)) * 100;
-    if (percentage < 33) return '#4ade80'; // green
-    if (percentage < 66) return '#fbbf24'; // yellow
-    return '#ef4444'; // red
-  };
-
-  // Function to determine step size for V sensitivity
-  const getVSensitivityStep = (value: number): number => {
-    if (value <= 1) return 0.2;
-    if (value <= 3) return 0.5;
-    if (value <= 10) return 1;
-    return 2;
-  };
 
   // Conversion functions for V sensitivity
   const vSliderToValue = (sliderValue: number): number => {
@@ -121,9 +106,8 @@ useEffect(() => {
                 <div 
                   className="absolute h-full rounded-full transition-all duration-150 ease-out"
                   style={{ 
-                    left: '0',
                     width: `${vValueToSlider(vSensitivity)}%`,
-                    backgroundColor: isVSensitivityDisabled ? "#9ca3af" : getSliderColor(vSensitivity, 0.8, 20)
+                    backgroundColor:  isVSensitivityDisabled  ? "#3b82f6" : "#9ca3af" 
                   }}
                 />
               </div>
