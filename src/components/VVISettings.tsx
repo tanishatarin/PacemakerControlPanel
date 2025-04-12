@@ -15,7 +15,6 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   isLocked,
   encoderConnected = false
 }) => {
-
   // Conversion functions for V sensitivity
   const vSliderToValue = (sliderValue: number): number => {
     if (sliderValue >= 99.5) return 0; // ASYNC when at maximum position
@@ -39,48 +38,34 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   };
 
   // Effect to activate the V sensitivity control in hardware
-  // Add a useCallback function
-  const optimizeEncoderSettings = useCallback(() => {
+  useEffect(() => {
     if (encoderConnected) {
-      // Immediate control setting for less lag
-      updateControls({ 
-        active_control: 'v_sensitivity',
-        v_sensitivity: vSensitivity
-      }).catch(err => console.error('Failed to set control:', err));
+      // Set V sensitivity as the active control with a slight delay
+      const timer = setTimeout(() => {
+        updateControls({ 
+          active_control: 'v_sensitivity',
+          v_sensitivity: vSensitivity
+        }).catch(err => console.error('Failed to set active control:', err));
+      }, 50);
+      
+      // Add a periodic reset to prevent sticking
+      const resetInterval = setInterval(() => {
+        // Only refresh the control if we're still mounted
+        updateControls({
+          active_control: 'v_sensitivity',
+          v_sensitivity: vSensitivity
+        }).catch(err => console.error('Failed to refresh control:', err));
+      }, 5000); // Check every 5 seconds
+      
+      // Reset active control when component unmounts
+      return () => {
+        clearTimeout(timer);
+        clearInterval(resetInterval);
+        updateControls({ active_control: 'none' })
+          .catch(err => console.error('Failed to reset active control:', err));
+      };
     }
   }, [encoderConnected, vSensitivity]);
-
-  // Replace existing useEffect
-  // Effect to activate the V sensitivity control in hardware
-useEffect(() => {
-  if (encoderConnected) {
-    // Set V sensitivity as the active control with a slight delay
-    const timer = setTimeout(() => {
-      updateControls({ 
-        active_control: 'v_sensitivity',
-        v_sensitivity: vSensitivity
-      }).catch(err => console.error('Failed to set active control:', err));
-    }, 50);
-    
-    // Add a periodic reset to prevent sticking
-    const resetInterval = setInterval(() => {
-      // Only refresh the control if we're still mounted
-      updateControls({
-        active_control: 'v_sensitivity',
-        v_sensitivity: vSensitivity
-      }).catch(err => console.error('Failed to refresh control:', err));
-    }, 5000); // Check every 5 seconds
-    
-    // Reset active control when component unmounts
-    return () => {
-      clearTimeout(timer);
-      clearInterval(resetInterval);
-      updateControls({ active_control: 'none' })
-        .catch(err => console.error('Failed to reset active control:', err));
-    };
-  }
-}, [encoderConnected, vSensitivity]);
-
 
   const isVSensitivityDisabled = vSensitivity === 0;
 
@@ -93,10 +78,10 @@ useEffect(() => {
         </div>
         
         <div className="p-4 space-y-4">
-          {/* V Sensitivity - Enabled */}
-          <div className={isVSensitivityDisabled ? "opacity-50" : ""}>
+          {/* V Sensitivity - Using blue color scheme like DDD Settings */}
+          <div className={`bg-blue-50 p-2 rounded ${isVSensitivityDisabled ? "opacity-50" : ""}`}>
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-gray-700">V Sensitivity</span>
+              <span className="text-sm text-blue-700 font-medium">V Sensitivity</span>
               <span className="text-sm font-medium">
                 {vSensitivity === 0 ? "ASYNC" : `${vSensitivity.toFixed(1)} mV`}
               </span>
@@ -106,8 +91,9 @@ useEffect(() => {
                 <div 
                   className="absolute h-full rounded-full transition-all duration-150 ease-out"
                   style={{ 
+                    left: '0',
                     width: `${vValueToSlider(vSensitivity)}%`,
-                    backgroundColor:  isVSensitivityDisabled  ? "#3b82f6" : "#9ca3af" 
+                    backgroundColor: "#3b82f6" // Blue color to match DDD settings
                   }}
                 />
               </div>
