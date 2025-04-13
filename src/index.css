@@ -79,9 +79,8 @@ html, body {
   overflow: hidden;
 }
 
-/* The simplest approach: just rotate the #root element */
 #root {
-  transform: rotate(-90deg);
+  transform: rotate(-90deg) scale(0.9); /* Added 90% scale */
   transform-origin: center;
   width: 100vh; 
   height: 100vw;

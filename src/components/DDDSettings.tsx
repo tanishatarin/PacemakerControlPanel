@@ -67,22 +67,6 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   };
 
   // Effect to update hardware encoder active control based on selected setting
-  // Inside the useEffect for hardware controls
-  // Add this function after the component declaration
-  const optimizeEncoderTransition = useCallback(() => {
-    if (encoderConnected && selectedSetting) {
-      const controlType = selectedSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
-      const sensitivityValue = selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity;
-      
-      // Skip debouncing for control type changes to make them immediate
-      updateControls({ 
-        active_control: controlType,
-        [controlType]: sensitivityValue
-      }).catch(err => console.error('Failed to set control:', err));
-    }
-  }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
-
-  // Replace the existing useEffect with this
   useEffect(() => {
     if (encoderConnected && selectedSetting) {
       // Determine which sensitivity is active
@@ -121,7 +105,6 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
     }
   }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
 
-
   // Check if sensitivities are disabled
   const isASensitivityDisabled = settings.aSensitivity === 0;
   const isVSensitivityDisabled = settings.vSensitivity === 0;
@@ -134,7 +117,7 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
       
       <div className="p-3 space-y-4">
         {/* A Sensitivity */}
-        <div className={`transition-all ${selectedSetting === 'aSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
+        <div className={`transition-all ${selectedSetting === 'aSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'} ${isASensitivityDisabled ? 'opacity-40' : ''}`}>
           <div className="flex justify-between items-center mb-1">
             <span className={`text-sm ${selectedSetting === 'aSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
               {selectedSetting === 'aSensitivity' && "➤ "}A Sensitivity
@@ -167,10 +150,13 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
             <span>10 mV</span>
             <span>0.4 mV</span>
           </div>
+          {isASensitivityDisabled && (
+            <p className="text-xs text-gray-500 mt-1">Adjust value to reactivate</p>
+          )}
         </div>
 
         {/* V Sensitivity */}
-        <div className={`transition-all ${selectedSetting === 'vSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
+        <div className={`transition-all ${selectedSetting === 'vSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'} ${isVSensitivityDisabled ? 'opacity-40' : ''}`}>
           <div className="flex justify-between items-center mb-1">
             <span className={`text-sm ${selectedSetting === 'vSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
               {selectedSetting === 'vSensitivity' && "➤ "}V Sensitivity
@@ -203,6 +189,9 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
             <span>20 mV</span>
             <span>0.8 mV</span>
           </div>
+          {isVSensitivityDisabled && (
+            <p className="text-xs text-gray-500 mt-1">Adjust value to reactivate</p>
+          )}
         </div>
         
         {/* Simple instructions */}
