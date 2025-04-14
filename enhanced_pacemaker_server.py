@@ -135,19 +135,36 @@ def handle_emergency_button():
 # Function to update the current rate value
 def update_rate():
     global current_rate, current_state
-    
+
     # Skip updating if locked, but allow in DOO mode
     if is_locked:
         return
-        
-    current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
-    rate_encoder.steps = current_rate
-    
-    # Update state
-    current_state["rate"] = current_rate
-    current_state["lastUpdate"] = time.time()
-    
-    print(f"Rate updated: {current_rate} ppm")
+
+    # Get current steps from encoder
+    current_steps = rate_encoder.steps
+
+    # Initialize last known steps
+    if not hasattr(update_rate, 'last_steps'):
+        update_rate.last_steps = current_steps
+        return
+
+    # Determine difference
+    step_diff = current_steps - update_rate.last_steps
+
+    if step_diff != 0:
+        # 1 step = 1 bpm change
+        current_rate += step_diff
+        current_rate = max(min_rate, min(current_rate, max_rate))
+
+        # Update state
+        current_state["rate"] = current_rate
+        current_state["lastUpdate"] = time.time()
+
+        # Store last steps
+        update_rate.last_steps = current_steps
+
+        print(f"Rate updated: {current_rate} ppm")
+
 
 # Function to determine the appropriate step size based on the current value
 def get_output_step_size(value):
@@ -389,6 +406,7 @@ def reset_rate():
     global current_rate, current_state
     rate_encoder.steps = 80
     current_rate = 80
+    update_rate.last_steps = 80  # <-- ADD THIS
     current_state["rate"] = current_rate
     current_state["lastUpdate"] = time.time()
     print("Rate reset to 80 ppm!")
@@ -397,8 +415,9 @@ def reset_rate():
 def reset_a_output():
     global current_a_output, last_a_output_steps, current_state
     a_output_encoder.steps = 100
-    last_a_output_steps = 100
+    last_a_output_steps = 100  # tracking
     current_a_output = 10.0
+    # last_a_output_steps = a_output_encoder.steps
     current_state["a_output"] = current_a_output
     current_state["lastUpdate"] = time.time()
     print("A. Output reset to 10.0 mA!")
@@ -407,8 +426,9 @@ def reset_a_output():
 def reset_v_output():
     global current_v_output, last_v_output_steps, current_state
     v_output_encoder.steps = 100
-    last_v_output_steps = 100
+    last_v_output_steps = 100 # tracking
     current_v_output = 10.0
+    # last_v_output_steps = v_output_encoder.steps
     current_state["v_output"] = current_v_output
     current_state["lastUpdate"] = time.time()
     print("V. Output reset to 10.0 mA!")
@@ -639,14 +659,22 @@ def apply_control_updates(updates):
     if 'rate' in updates:
         current_rate = int(updates['rate'])
         current_state["rate"] = current_rate
-    
+        rate_encoder.steps = current_rate
+        if hasattr(update_rate, 'last_steps'):
+            update_rate.last_steps = current_rate
+
     if 'a_output' in updates:
         current_a_output = float(updates['a_output'])
         current_state["a_output"] = current_a_output
-    
+        a_output_encoder.steps = int(current_a_output * 10)  # Optional: depends on scale
+        last_a_output_steps = a_output_encoder.steps
+
     if 'v_output' in updates:
         current_v_output = float(updates['v_output'])
         current_state["v_output"] = current_v_output
+        v_output_encoder.steps = int(current_v_output * 10)
+        last_v_output_steps = v_output_encoder.steps
+
     
     if 'isLocked' in updates:
         is_locked = bool(updates['isLocked'])
@@ -1100,6 +1128,9 @@ if __name__ == '__main__':
         "batteryLevel": 100,
         "lastUpdate": time.time()
     }
+    
+    # Ensure mode encoder starts synced
+    update_mode_output.last_steps = mode_output_encoder.steps
     
     print("Pacemaker Server Started with WebSocket support")
     print(f"WebSocket server on port {WS_PORT} for real-time data sharing")
