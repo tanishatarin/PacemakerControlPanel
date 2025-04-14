@@ -3,81 +3,55 @@ from flask_cors import CORS
 from gpiozero import RotaryEncoder, Button, LED
 import time
 import json
-import asyncio
-import websockets
 import threading
-from typing import Set, Dict, Any
+import socket
+import select
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# WebSocket server configuration
+# Simple WebSocket server configuration
 WS_PORT = 5001
-connected_clients: Set[websockets.WebSocketServerProtocol] = set()
-auth_tokens = {"pacemaker_token_123": "admin", "secondary_app_token_456": "view"}  # Simple auth tokens
+connected_clients = []
 
-# Set up the Rate rotary encoder (pins defined as in your example)
+# Use your existing encoder and button setup from pacemaker_server.py
 rate_encoder = RotaryEncoder(27, 22, max_steps=200, wrap=False)
-
-# Set up the A Output rotary encoder (Clock 21, DT 20)
 a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
-
-# Set up the V Output rotary encoder (Clock 13, DT 6)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
-
-# mode Clock 8, DT 7
 mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
+lock_button = Button(17, bounce_time=0.05)
+up_button = Button(26, bounce_time=0.05)
+down_button = Button(14, bounce_time=0.05)
+left_button = Button(15, bounce_time=0.05)
+emergency_button = Button(23, bounce_time=0.05)
 
-# Set up the Lock Button (from the screenshot, using GPIO 17)
-lock_button = Button(17, bounce_time=0.05)  # Reduced bounce time for faster response
 
-# Set up the Up & down Button  (using GPIO 26, 14)
-up_button = Button(26, bounce_time=0.05)  # Added up button on pin 26
-down_button = Button(14, bounce_time=0.05)  # Add down button on pin 14
-left_button = Button(15, bounce_time=0.05)  # Add left button on pin 8
-
-# Set up the Emergency DOO button (pin 23)
-emergency_button = Button(23, bounce_time=0.05)  # Add emergency button on pin 23
-
-# Initial values
+# Initial values - copied from your working server
 rate_encoder.steps = 80
 current_rate = 80
-
-a_output_encoder.steps = 100  # 10.0 mA initially
+a_output_encoder.steps = 100
 current_a_output = 10.0
-
-v_output_encoder.steps = 100  # 10.0 mA initially
+v_output_encoder.steps = 100
 current_v_output = 10.0
-
-mode_output_encoder.steps = 50 # 5.0 mA initially
-current_mode_output = 5.0 
-
-# Add these initializations near the top with other initial values
-a_sensitivity = 0.5  # Initial A sensitivity (mV)
-v_sensitivity = 2.0  # Initial V sensitivity (mV)
-active_control = 'none'  # Initial active control (none, a_sensitivity, v_sensitivity)
-
-# Lock state
+mode_output_encoder.steps = 50
+current_mode_output = 5.0
+a_sensitivity = 0.5
+v_sensitivity = 2.0
+active_control = 'none'
 is_locked = False
-
-# Current mode (0 = VOO, 5 = DOO, etc.)
 current_mode = 0
 
 # Min/max values
 min_rate = 30
 max_rate = 200
-
 min_a_output = 0.0
 max_a_output = 20.0
-
 min_v_output = 0.0
 max_v_output = 25.0
-
-min_a_sensitivity = 0.4  # mV
-max_a_sensitivity = 10.0  # mV
-
-min_v_sensitivity = 0.8  # mV
-max_v_sensitivity = 20.0  # mV
+min_a_sensitivity = 0.4
+max_a_sensitivity = 10.0
+min_v_sensitivity = 0.8
+max_v_sensitivity = 20.0
 
 # Track last encoder position for outputs
 last_a_output_steps = 100
@@ -86,20 +60,16 @@ last_v_output_steps = 100
 # Button state trackers
 up_button_pressed = False
 last_up_press_time = 0
-
 down_button_pressed = False
 last_down_press_time = 0
-
 left_button_pressed = False
 last_left_press_time = 0
-
 emergency_button_pressed = False
 last_emergency_press_time = 0
-
 last_mode_encoder_activity = time.time()
 encoder_activity_flag = False
 
-# Current state - this will be shared with all connected clients
+# Current state to be shared with WebSocket clients
 current_state = {
     "rate": current_rate,
     "a_output": current_a_output,
@@ -114,103 +84,6 @@ current_state = {
     "lastUpdate": time.time()
 }
 
-# Function to broadcast state to all connected clients
-async def broadcast_state(state_change: Dict[str, Any] = None):
-    """
-    Broadcast the current state to all connected clients
-    If state_change is provided, only broadcast those specific changes
-    """
-    if not connected_clients:
-        return
-        
-    # Update the current_state with the changes
-    if state_change:
-        for key, value in state_change.items():
-            current_state[key] = value
-            
-    current_state["lastUpdate"] = time.time()
-    
-    # Create the message
-    message = json.dumps(current_state)
-    
-    # Send to all connected clients
-    websockets_to_remove = set()
-    for websocket in connected_clients:
-        try:
-            await websocket.send(message)
-        except websockets.exceptions.ConnectionClosed:
-            websockets_to_remove.add(websocket)
-    
-    # Remove closed connections
-    for websocket in websockets_to_remove:
-        connected_clients.remove(websocket)
-
-# WebSocket server handler
-async def websocket_handler(websocket, path):
-    # Handle authentication
-    try:
-        auth_message = await websocket.recv()
-        auth_data = json.loads(auth_message)
-        
-        if not auth_data.get("token") or auth_data["token"] not in auth_tokens:
-            await websocket.send(json.dumps({"type": "error", "message": "Authentication failed"}))
-            return
-            
-        # Add to connected clients
-        connected_clients.add(websocket)
-        
-        # Send initial state
-        await websocket.send(json.dumps(current_state))
-        
-        # Handle messages from this client
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-                
-                # Only allow updates from clients with "admin" role
-                if auth_tokens[auth_data["token"]] != "admin":
-                    continue
-                    
-                # Handle control updates
-                if data.get("type") == "control_update":
-                    updates = data.get("updates", {})
-                    
-                    # Update internal state
-                    state_changes = {}
-                    for key, value in updates.items():
-                        # Only update valid fields
-                        if key in current_state:
-                            state_changes[key] = value
-                            
-                    # Broadcast changes to all clients
-                    if state_changes:
-                        await broadcast_state(state_changes)
-            
-            except json.JSONDecodeError:
-                print(f"Invalid JSON received: {message}")
-                
-    except websockets.exceptions.ConnectionClosed:
-        print("Connection closed")
-    finally:
-        if websocket in connected_clients:
-            connected_clients.remove(websocket)
-
-# Start WebSocket server in a separate thread
-def run_websocket_server():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    start_server = websockets.serve(websocket_handler, "0.0.0.0", WS_PORT)
-    loop.run_until_complete(start_server)
-    print(f"WebSocket server started on port {WS_PORT}")
-    loop.run_forever()
-
-# Function to update state and broadcast changes
-def update_state_and_broadcast(key, value):
-    if current_state.get(key) != value:
-        # Update the value
-        current_state[key] = value
-        # Run broadcast in a separate thread to avoid blocking
-        threading.Thread(target=lambda: asyncio.run(broadcast_state({key: value}))).start()
 
 def handle_down_button():
     global last_down_press_time, down_button_pressed
@@ -252,7 +125,6 @@ def handle_emergency_button():
     if current_time - last_emergency_press_time > 0.3:
         last_emergency_press_time = current_time
         emergency_button_pressed = True
-        update_state_and_broadcast("mode", 5)  # Update mode to DOO (5)
         print("Emergency button pressed")
 
 # Function to update the current rate value
@@ -265,7 +137,6 @@ def update_rate():
         
     current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
     rate_encoder.steps = current_rate
-    update_state_and_broadcast("rate", current_rate)  # Add broadcast
     print(f"Rate updated: {current_rate} ppm")
 
 # Function to determine the appropriate step size based on the current value
@@ -340,9 +211,6 @@ def update_a_output():
         # Update the encoder position to match the current value
         last_a_output_steps = current_steps
         
-        # Broadcast the update
-        update_state_and_broadcast("a_output", current_a_output)
-        
         print(f"A. Output updated: {current_a_output} mA (step size: {step_size}, diff: {diff})")
 
 # Function to update the current V. Output value
@@ -379,9 +247,6 @@ def update_v_output():
         
         # Update the encoder position to match the current value
         last_v_output_steps = current_steps
-        
-        # Broadcast the update
-        update_state_and_broadcast("v_output", current_v_output)
         
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
@@ -430,7 +295,6 @@ def update_mode_output():
                 a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
                 
         a_sensitivity = round(a_sensitivity, 1)
-        update_state_and_broadcast("aSensitivity", a_sensitivity)  # Add broadcast
         print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
     
     elif active_control == 'v_sensitivity':
@@ -447,7 +311,6 @@ def update_mode_output():
                 v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
                 
         v_sensitivity = round(v_sensitivity, 1)
-        update_state_and_broadcast("vSensitivity", v_sensitivity)  # Add broadcast
         print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
         
 
@@ -487,7 +350,6 @@ def reset_stuck_encoders():
 def toggle_lock():
     global is_locked
     is_locked = not is_locked
-    update_state_and_broadcast("isLocked", is_locked)  # Add broadcast
     
     # Update LED based on lock state
     if is_locked:
@@ -505,14 +367,169 @@ lock_button.when_released = toggle_lock  # Change from when_pressed to when_rele
 rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
-mode_output_encoder.when_rotated = update_mode_output
 lock_button.when_pressed = toggle_lock
-
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
-emergency_button.when_pressed = handle_emergency_button  # Use pressed for emergency instead of released
+emergency_button.when_pressed = handle_emergency_button
 
+
+
+
+
+def broadcast_state_update(updates=None):
+    """Update the current state and broadcast to all connected clients"""
+    global current_state
+    
+    # Update the state with the new values
+    if updates:
+        for key, value in updates.items():
+            current_state[key] = value
+    
+    current_state["lastUpdate"] = time.time()
+    
+    # Only broadcast if there are connected clients
+    if not connected_clients:
+        return
+        
+    # Create the message as a JSON string
+    message = json.dumps(current_state)
+    
+    # Add WebSocket frame headers (simplified)
+    frame = bytearray([0x81])  # Text frame
+    length = len(message)
+    
+    if length < 126:
+        frame.append(length)
+    elif length < 65536:
+        frame.append(126)
+        frame.extend(length.to_bytes(2, byteorder='big'))
+    else:
+        frame.append(127)
+        frame.extend(length.to_bytes(8, byteorder='big'))
+    
+    # Add the message content
+    frame.extend(message.encode())
+    
+    # Send to all clients
+    clients_to_remove = []
+    for client in connected_clients:
+        try:
+            client.sendall(frame)
+        except:
+            clients_to_remove.append(client)
+    
+    # Remove disconnected clients
+    for client in clients_to_remove:
+        if client in connected_clients:
+            connected_clients.remove(client)
+            try:
+                client.close()
+            except:
+                pass
+
+def handle_websocket_client(client_socket):
+    """Handle communication with a WebSocket client"""
+    try:
+        # Wait for initial handshake
+        data = client_socket.recv(1024).decode('utf-8')
+        
+        # Basic WebSocket handshake response
+        if "Upgrade: websocket" in data and "Sec-WebSocket-Key:" in data:
+            # Extract the key
+            key = ""
+            for line in data.split('\r\n'):
+                if line.startswith("Sec-WebSocket-Key:"):
+                    key = line.split(': ')[1].strip()
+                    break
+            
+            if key:
+                import hashlib
+                import base64
+                
+                # Calculate the accept key (simplified)
+                accept_key = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                accept_key = base64.b64encode(hashlib.sha1(accept_key.encode()).digest()).decode()
+                
+                # Send handshake response
+                handshake = (
+                    "HTTP/1.1 101 Switching Protocols\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Connection: Upgrade\r\n"
+                    f"Sec-WebSocket-Accept: {accept_key}\r\n\r\n"
+                )
+                client_socket.sendall(handshake.encode())
+                
+                # Add to connected clients
+                connected_clients.append(client_socket)
+                print(f"WebSocket client connected: {client_socket.getpeername()}")
+                
+                # Send initial state
+                broadcast_state_update()
+                
+                # Keep connection open to receive messages
+                while True:
+                    ready = select.select([client_socket], [], [], 1)
+                    if ready[0]:
+                        frame = client_socket.recv(1024)
+                        if not frame:
+                            break
+                        
+                        # Process incoming message if needed
+                        # This is a simplified implementation that doesn't decode frames
+                    
+    except Exception as e:
+        print(f"WebSocket client error: {e}")
+    finally:
+        if client_socket in connected_clients:
+            connected_clients.remove(client_socket)
+        try:
+            client_socket.close()
+        except:
+            pass
+        print("WebSocket client disconnected")
+
+def run_websocket_server():
+    """Run a simple WebSocket server"""
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind(('0.0.0.0', WS_PORT))
+    server_socket.listen(5)
+    
+    print(f"WebSocket server started on port {WS_PORT}")
+    
+    while True:
+        try:
+            client_socket, address = server_socket.accept()
+            client_thread = threading.Thread(
+                target=handle_websocket_client,
+                args=(client_socket,),
+                daemon=True
+            )
+            client_thread.start()
+        except Exception as e:
+            print(f"WebSocket server error: {e}")
+
+
+
+# New endpoint for WebSocket clients to get full state
+@app.route('/api/state', methods=['GET'])
+def get_full_state():
+    return jsonify(current_state)
+
+if __name__ == '__main__':
+    # Start WebSocket server in background thread
+    ws_thread = threading.Thread(target=run_websocket_server, daemon=True)
+    ws_thread.start()
+    
+    print("Pacemaker Server Started with WebSocket support")
+    print(f"WebSocket server on port {WS_PORT} for real-time data sharing")
+    print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
+    print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
+    print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
+    
+    # Start Flask app
+    app.run(host='0.0.0.0', port=5000, debug=False)
 
 # API endpoints for Lock status
 @app.route('/api/lock', methods=['GET'])
@@ -549,7 +566,6 @@ def set_rate():
         new_rate = int(data['value'])
         rate_encoder.steps = new_rate
         update_rate()
-        update_state_and_broadcast("rate", current_rate)  # Add broadcast
         return jsonify({'success': True, 'value': current_rate})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -567,7 +583,6 @@ def reset_rate():
     global current_rate
     rate_encoder.steps = 80
     current_rate = 80
-    update_state_and_broadcast("rate", current_rate)  # Add broadcast
     print("Rate reset to 80 ppm!")
 
 # API endpoints for A. Output
@@ -597,7 +612,6 @@ def set_a_output():
         current_a_output = round(current_a_output / step_size) * step_size
         # Make sure it's within bounds
         current_a_output = max(min_a_output, min(current_a_output, max_a_output))
-        update_state_and_broadcast("a_output", current_a_output)  # Add broadcast
         return jsonify({'success': True, 'value': current_a_output})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -616,7 +630,6 @@ def reset_a_output():
     a_output_encoder.steps = 100
     last_a_output_steps = 100
     current_a_output = 10.0
-    update_state_and_broadcast("a_output", current_a_output)  # Add broadcast
     print("A. Output reset to 10.0 mA!")
 
 # API endpoints for V. Output
@@ -647,7 +660,6 @@ def set_v_output():
         current_v_output = round(current_v_output / step_size) * step_size
         # Make sure it's within bounds
         current_v_output = max(min_v_output, min(current_v_output, max_v_output))
-        update_state_and_broadcast("v_output", current_v_output)  # Add broadcast
         return jsonify({'success': True, 'value': current_v_output})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -666,7 +678,6 @@ def reset_v_output():
     v_output_encoder.steps = 100
     last_v_output_steps = 100
     current_v_output = 10.0
-    update_state_and_broadcast("v_output", current_v_output)  # Add broadcast
     print("V. Output reset to 10.0 mA!")
     
 # New API endpoint for sensitivity controls
@@ -697,7 +708,6 @@ def set_sensitivity():
             if active_control != new_control:
                 # Important: Reset encoder state when changing controls
                 active_control = new_control
-                update_state_and_broadcast("active_control", active_control)  # Add broadcast
                 # Force reset of encoder tracking state
                 if hasattr(update_mode_output, 'last_steps'):
                     delattr(update_mode_output, 'last_steps')
@@ -721,7 +731,6 @@ def set_sensitivity():
             # Validate range
             if new_value == 0 or min_a_sensitivity <= new_value <= max_a_sensitivity:
                 a_sensitivity = round(new_value, 1)  # Round to 1 decimal place
-                update_state_and_broadcast("aSensitivity", a_sensitivity)  # Add broadcast
                 updated = True
                 print(f"A sensitivity set to: {a_sensitivity}")
             else:
@@ -736,7 +745,6 @@ def set_sensitivity():
             # Validate range
             if new_value == 0 or min_v_sensitivity <= new_value <= max_v_sensitivity:
                 v_sensitivity = round(new_value, 1)  # Round to 1 decimal place
-                update_state_and_broadcast("vSensitivity", v_sensitivity)  # Add broadcast
                 updated = True
                 print(f"V sensitivity set to: {v_sensitivity}")
             else:
@@ -790,9 +798,6 @@ def set_mode():
                 reset_rate()  # Set rate to 80 ppm
                 current_a_output = 20.0  # Set A output to 20 mA
                 current_v_output = 25.0  # Set V output to 25 mA
-                update_state_and_broadcast("a_output", current_a_output)  # Add broadcast
-                update_state_and_broadcast("v_output", current_v_output)  # Add broadcast
-            update_state_and_broadcast("mode", current_mode)  # Add broadcast
             return jsonify({'success': True, 'mode': current_mode})
         else:
             return jsonify({'error': 'Invalid mode value'}), 400
@@ -801,9 +806,8 @@ def set_mode():
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
+    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
     
-    # Create response data
     status_data = {
         'status': 'ok',
         'rate': current_rate,
@@ -811,10 +815,6 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
-        'a_sensitivity': a_sensitivity,
-        'v_sensitivity': v_sensitivity,
-        'active_control': active_control,
-        'encoder_active': encoder_activity_flag,  # Add this line
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
@@ -823,16 +823,11 @@ def health_check():
         }
     }
     
-    # Reset flags
-    was_up_pressed = up_button_pressed
-    was_down_pressed = down_button_pressed
-    was_left_pressed = left_button_pressed
-    was_emergency_pressed = emergency_button_pressed
+    # Reset button states
     up_button_pressed = False
     down_button_pressed = False
     left_button_pressed = False
     emergency_button_pressed = False
-    encoder_activity_flag = False  # Reset the flag
     
     return jsonify(status_data)
 
@@ -864,75 +859,8 @@ def get_hardware_info():
         }
     })
 
-# New endpoints for the WebSocket integration
-
-# Get the current full state
-@app.route('/api/state', methods=['GET'])
-def get_state():
-    return jsonify(current_state)
-
-# Update state directly (for admin applications)
-@app.route('/api/state/update', methods=['POST'])
-def update_state():
-    data = request.json
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-        
-    updates = {}
-    for key, value in data.items():
-        if key in current_state:
-            updates[key] = value
-            current_state[key] = value
-    
-    # Broadcast changes
-    if updates:
-        threading.Thread(target=lambda: asyncio.run(broadcast_state(updates))).start()
-        
-    return jsonify({'success': True, 'updates': updates})
-
-# Pause control endpoint
-@app.route('/api/pause', methods=['POST'])
-def pause_pacemaker():
-    global current_state
-    
-    if is_locked:
-        return jsonify({'error': 'Device is locked'}), 403
-    
-    data = request.json
-    if 'isPaused' in data:
-        is_paused = bool(data['isPaused'])
-        pause_time = int(data.get('pauseTimeLeft', 10))  # Default 10 seconds
-        
-        updates = {
-            'isPaused': is_paused,
-            'pauseTimeLeft': pause_time if is_paused else 0
-        }
-        
-        # Update state and broadcast
-        threading.Thread(target=lambda: asyncio.run(broadcast_state(updates))).start()
-        
-        return jsonify({'success': True, 'isPaused': is_paused, 'pauseTimeLeft': updates['pauseTimeLeft']})
-    
-    return jsonify({'error': 'Missing isPaused parameter'}), 400
-
-# Battery level control (for testing)
-@app.route('/api/battery', methods=['POST'])
-def set_battery_level():
-    data = request.json
-    if 'level' in data:
-        level = int(data['level'])
-        if 0 <= level <= 100:
-            update_state_and_broadcast("batteryLevel", level)
-            return jsonify({'success': True, 'batteryLevel': level})
-        return jsonify({'error': 'Battery level must be between 0 and 100'}), 400
-    return jsonify({'error': 'Missing level parameter'}), 400
-
 
 if __name__ == '__main__':
-    # Start the WebSocket server in a background thread
-    ws_thread = threading.Thread(target=run_websocket_server, daemon=True)
-    ws_thread.start()
-    
     # Set initial LED state based on lock state
     # if is_locked:
     #     # lock_led.on()
@@ -940,7 +868,6 @@ if __name__ == '__main__':
     #     # lock_led.off()
         
     print("Pacemaker Server Started")
-    print(f"WebSocket server on port {WS_PORT} for real-time data sharing")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
