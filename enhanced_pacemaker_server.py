@@ -136,34 +136,38 @@ def handle_emergency_button():
 def update_rate():
     global current_rate, current_state
 
-    # Skip updating if locked, but allow in DOO mode
     if is_locked:
         return
 
-    # Get current steps from encoder
+    # Get current steps
     current_steps = rate_encoder.steps
 
-    # Initialize last known steps
+    # Initialize tracking
     if not hasattr(update_rate, 'last_steps'):
         update_rate.last_steps = current_steps
         return
 
-    # Determine difference
+    # Compute delta
     step_diff = current_steps - update_rate.last_steps
 
+    # Sanity check: encoder reports a weird jump?
+    if abs(step_diff) > 10:
+        print(f"[Rate Encoder] Ignoring jump: {step_diff} steps")
+        update_rate.last_steps = current_steps
+        return
+
     if step_diff != 0:
-        # 1 step = 1 bpm change
-        current_rate += step_diff
-        current_rate = max(min_rate, min(current_rate, max_rate))
+        new_rate = current_rate + step_diff
+        new_rate = max(min_rate, min(new_rate, max_rate))
+        current_rate = new_rate
 
         # Update state
         current_state["rate"] = current_rate
         current_state["lastUpdate"] = time.time()
 
-        # Store last steps
-        update_rate.last_steps = current_steps
+        print(f"Rate updated: {current_rate} (Δ {step_diff})")
 
-        print(f"Rate updated: {current_rate} ppm")
+    update_rate.last_steps = current_steps
 
 
 # Function to determine the appropriate step size based on the current value
@@ -764,11 +768,11 @@ rate_encoder.when_rotated = update_rate
 a_output_encoder.when_rotated = update_a_output
 v_output_encoder.when_rotated = update_v_output
 mode_output_encoder.when_rotated = update_mode_output
-lock_button.when_pressed = toggle_lock
+lock_button.when_released = toggle_lock
 up_button.when_released = handle_up_button
 down_button.when_released = handle_down_button
 left_button.when_released = handle_left_button
-emergency_button.when_pressed = handle_emergency_button
+emergency_button.when_released = handle_emergency_button
 
 # New endpoint for WebSocket clients to get full state
 @app.route('/api/state', methods=['GET'])
