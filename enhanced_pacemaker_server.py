@@ -137,6 +137,7 @@ def update_rate():
         
     current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
     rate_encoder.steps = current_rate
+    broadcast_state_update({"rate": current_rate})
     print(f"Rate updated: {current_rate} ppm")
 
 # Function to determine the appropriate step size based on the current value
@@ -211,6 +212,7 @@ def update_a_output():
         # Update the encoder position to match the current value
         last_a_output_steps = current_steps
         
+        broadcast_state_update({"a_output": current_a_output})
         print(f"A. Output updated: {current_a_output} mA (step size: {step_size}, diff: {diff})")
 
 # Function to update the current V. Output value
@@ -248,6 +250,7 @@ def update_v_output():
         # Update the encoder position to match the current value
         last_v_output_steps = current_steps
         
+        broadcast_state_update({"v_output": current_v_output})
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
 
@@ -295,6 +298,7 @@ def update_mode_output():
                 a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
                 
         a_sensitivity = round(a_sensitivity, 1)
+        broadcast_state_update({"aSensitivity": a_sensitivity})
         print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
     
     elif active_control == 'v_sensitivity':
@@ -311,6 +315,7 @@ def update_mode_output():
                 v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
                 
         v_sensitivity = round(v_sensitivity, 1)
+        broadcast_state_update({"vSensitivity": v_sensitivity})
         print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
         
 
@@ -358,6 +363,7 @@ def toggle_lock():
     else:
         # lock_led.off()  # Turn off LED when unlocked
         print("Device UNLOCKED")
+    broadcast_state_update({"isLocked": is_locked})
 
 # Change the event binding - only toggle on release
 # This ensures a complete click cycle is required
@@ -552,6 +558,7 @@ def set_rate():
         new_rate = int(data['value'])
         rate_encoder.steps = new_rate
         update_rate()
+        broadcast_state_update({"rate": current_rate})
         return jsonify({'success': True, 'value': current_rate})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -598,6 +605,7 @@ def set_a_output():
         current_a_output = round(current_a_output / step_size) * step_size
         # Make sure it's within bounds
         current_a_output = max(min_a_output, min(current_a_output, max_a_output))
+        broadcast_state_update({"a_output": current_a_output})
         return jsonify({'success': True, 'value': current_a_output})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -646,6 +654,7 @@ def set_v_output():
         current_v_output = round(current_v_output / step_size) * step_size
         # Make sure it's within bounds
         current_v_output = max(min_v_output, min(current_v_output, max_v_output))
+        broadcast_state_update({"v_output": current_v_output})
         return jsonify({'success': True, 'value': current_v_output})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -719,6 +728,7 @@ def set_sensitivity():
                 a_sensitivity = round(new_value, 1)  # Round to 1 decimal place
                 updated = True
                 print(f"A sensitivity set to: {a_sensitivity}")
+                broadcast_state_update({"aSensitivity": a_sensitivity})
             else:
                 return jsonify({'error': f'A sensitivity value out of range ({min_a_sensitivity}-{max_a_sensitivity} or 0)'}), 400
         except Exception as e:
@@ -733,6 +743,7 @@ def set_sensitivity():
                 v_sensitivity = round(new_value, 1)  # Round to 1 decimal place
                 updated = True
                 print(f"V sensitivity set to: {v_sensitivity}")
+                broadcast_state_update({"vSensitivity": v_sensitivity})
             else:
                 return jsonify({'error': f'V sensitivity value out of range ({min_v_sensitivity}-{max_v_sensitivity} or 0)'}), 400
         except Exception as e:
