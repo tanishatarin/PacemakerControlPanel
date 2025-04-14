@@ -517,20 +517,6 @@ def run_websocket_server():
 def get_full_state():
     return jsonify(current_state)
 
-if __name__ == '__main__':
-    # Start WebSocket server in background thread
-    ws_thread = threading.Thread(target=run_websocket_server, daemon=True)
-    ws_thread.start()
-    
-    print("Pacemaker Server Started with WebSocket support")
-    print(f"WebSocket server on port {WS_PORT} for real-time data sharing")
-    print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
-    print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
-    print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
-    
-    # Start Flask app
-    app.run(host='0.0.0.0', port=5000, debug=False)
-
 # API endpoints for Lock status
 @app.route('/api/lock', methods=['GET'])
 def get_lock():
@@ -859,15 +845,13 @@ def get_hardware_info():
         }
     })
 
-
 if __name__ == '__main__':
-    # Set initial LED state based on lock state
-    # if is_locked:
-    #     # lock_led.on()
-    # else:
-    #     # lock_led.off()
-        
-    print("Pacemaker Server Started")
+    # Start WebSocket server in background thread
+    ws_thread = threading.Thread(target=run_websocket_server, daemon=True)
+    ws_thread.start()
+    
+    print("Pacemaker Server Started with WebSocket support")
+    print(f"WebSocket server on port {WS_PORT} for real-time data sharing")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
@@ -875,6 +859,8 @@ if __name__ == '__main__':
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")
-    print(f"Left button on pin GPIO 8")
+    print(f"Left button on pin GPIO 15") # Note: You have this as pin 8 in one place and 15 in another
     print(f"Emergency DOO button on pin GPIO 23")
+    
+    # Start Flask app
     app.run(host='0.0.0.0', port=5000, debug=False)
