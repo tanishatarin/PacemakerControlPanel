@@ -5,12 +5,14 @@ import time
 import json
 import threading
 import socket
-import select
+import base64
+import hashlib
+import struct
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Simple WebSocket server configuration
+# WebSocket server configuration
 WS_PORT = 5001
 connected_clients = []
 
@@ -25,8 +27,7 @@ down_button = Button(14, bounce_time=0.05)
 left_button = Button(15, bounce_time=0.05)
 emergency_button = Button(23, bounce_time=0.05)
 
-
-# Initial values - copied from your working server
+# Initial values
 rate_encoder.steps = 80
 current_rate = 80
 a_output_encoder.steps = 100
@@ -84,52 +85,56 @@ current_state = {
     "lastUpdate": time.time()
 }
 
-
+# Copy all the handler functions and other code from your original pacemaker_server.py
 def handle_down_button():
-    global last_down_press_time, down_button_pressed
+    global last_down_press_time, down_button_pressed, current_state
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
     if current_time - last_down_press_time > 0.3:
         last_down_press_time = current_time
         down_button_pressed = True
+        current_state["lastUpdate"] = time.time()
         print("Down button pressed")
 
 
 def handle_up_button():
-    global last_up_press_time, up_button_pressed
+    global last_up_press_time, up_button_pressed, current_state
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
     if current_time - last_up_press_time > 0.3:
         last_up_press_time = current_time
         up_button_pressed = True
+        current_state["lastUpdate"] = time.time()
         print("Up button pressed")
         
         
 def handle_left_button():
-    global last_left_press_time, left_button_pressed
+    global last_left_press_time, left_button_pressed, current_state
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
     if current_time - last_left_press_time > 0.3:
         last_left_press_time = current_time
         left_button_pressed = True
+        current_state["lastUpdate"] = time.time()
         print("Left button pressed")
 
 def handle_emergency_button():
-    global last_emergency_press_time, emergency_button_pressed
+    global last_emergency_press_time, emergency_button_pressed, current_state
     current_time = time.time()
     
     # Debounce logic - only register a press if it's been at least 300ms since the last one
     if current_time - last_emergency_press_time > 0.3:
         last_emergency_press_time = current_time
         emergency_button_pressed = True
+        current_state["lastUpdate"] = time.time()
         print("Emergency button pressed")
 
 # Function to update the current rate value
 def update_rate():
-    global current_rate
+    global current_rate, current_state
     
     # Skip updating if locked, but allow in DOO mode
     if is_locked:
@@ -137,7 +142,11 @@ def update_rate():
         
     current_rate = max(min_rate, min(rate_encoder.steps, max_rate))
     rate_encoder.steps = current_rate
-    broadcast_state_update({"rate": current_rate})
+    
+    # Update state
+    current_state["rate"] = current_rate
+    current_state["lastUpdate"] = time.time()
+    
     print(f"Rate updated: {current_rate} ppm")
 
 # Function to determine the appropriate step size based on the current value
@@ -152,7 +161,6 @@ def get_output_step_size(value):
         return 1.0
 
 # Function to get step size for sensitivity values
-# Update the step size function for more precise control at upper ranges
 def get_sensitivity_step_size(value, is_a_sensitivity=True):
     if is_a_sensitivity:
         # For A sensitivity (0.4-10.0 mV)
@@ -179,7 +187,7 @@ def get_sensitivity_step_size(value, is_a_sensitivity=True):
 
 # Function to update the current A. Output value
 def update_a_output():
-    global current_a_output, last_a_output_steps
+    global current_a_output, last_a_output_steps, current_state
     
     # Skip updating if locked, but allow in DOO mode
     if is_locked:
@@ -212,12 +220,15 @@ def update_a_output():
         # Update the encoder position to match the current value
         last_a_output_steps = current_steps
         
-        broadcast_state_update({"a_output": current_a_output})
+        # Update state
+        current_state["a_output"] = current_a_output
+        current_state["lastUpdate"] = time.time()
+        
         print(f"A. Output updated: {current_a_output} mA (step size: {step_size}, diff: {diff})")
 
 # Function to update the current V. Output value
 def update_v_output():
-    global current_v_output, last_v_output_steps
+    global current_v_output, last_v_output_steps, current_state
     
     # Skip updating if locked, but allow in DOO mode
     if is_locked:
@@ -250,12 +261,14 @@ def update_v_output():
         # Update the encoder position to match the current value
         last_v_output_steps = current_steps
         
-        broadcast_state_update({"v_output": current_v_output})
+        # Update state
+        current_state["v_output"] = current_v_output
+        current_state["lastUpdate"] = time.time()
+        
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
 
-
 def update_mode_output():
-    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag
+    global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag, current_state
     
     # Skip if locked or no active control
     if is_locked or active_control == 'none':
@@ -298,7 +311,11 @@ def update_mode_output():
                 a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
                 
         a_sensitivity = round(a_sensitivity, 1)
-        broadcast_state_update({"aSensitivity": a_sensitivity})
+        
+        # Update state
+        current_state["aSensitivity"] = a_sensitivity
+        current_state["lastUpdate"] = time.time()
+        
         print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
     
     elif active_control == 'v_sensitivity':
@@ -315,14 +332,16 @@ def update_mode_output():
                 v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
                 
         v_sensitivity = round(v_sensitivity, 1)
-        broadcast_state_update({"vSensitivity": v_sensitivity})
-        print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
         
+        # Update state
+        current_state["vSensitivity"] = v_sensitivity
+        current_state["lastUpdate"] = time.time()
+        
+        print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
 
-# Add near your other hardware functions
 def hardware_reset_mode_encoder():
     """Force reset of mode encoder state at hardware level"""
-    global mode_output_encoder, update_mode_output
+    global mode_output_encoder
     
     # Get current position
     current_steps = mode_output_encoder.steps
@@ -333,8 +352,6 @@ def hardware_reset_mode_encoder():
     
     print(f"Hard reset of mode encoder to steps={current_steps}")
 
-
-# Add this function to periodically reset the encoder state if it gets stuck
 def reset_stuck_encoders():
     global mode_output_encoder, last_mode_encoder_activity
     
@@ -350,11 +367,14 @@ def reset_stuck_encoders():
             print(f"Resetting stuck encoder: {update_mode_output.last_steps} → {current_steps}")
             update_mode_output.last_steps = current_steps
 
-
 # Function to toggle lock state
 def toggle_lock():
-    global is_locked
+    global is_locked, current_state
     is_locked = not is_locked
+    
+    # Update state
+    current_state["isLocked"] = is_locked
+    current_state["lastUpdate"] = time.time()
     
     # Update LED based on lock state
     if is_locked:
@@ -363,127 +383,235 @@ def toggle_lock():
     else:
         # lock_led.off()  # Turn off LED when unlocked
         print("Device UNLOCKED")
-    broadcast_state_update({"isLocked": is_locked})
 
-# Change the event binding - only toggle on release
-# This ensures a complete click cycle is required
-lock_button.when_released = toggle_lock  # Change from when_pressed to when_released
-
-# Attach event listeners
-rate_encoder.when_rotated = update_rate
-a_output_encoder.when_rotated = update_a_output
-v_output_encoder.when_rotated = update_v_output
-lock_button.when_pressed = toggle_lock
-up_button.when_released = handle_up_button
-down_button.when_released = handle_down_button
-left_button.when_released = handle_left_button
-emergency_button.when_pressed = handle_emergency_button
-
-
-
-
-
-def broadcast_state_update(updates=None):
-    """Update the current state and broadcast to all connected clients"""
-    global current_state
-    
-    # Update the state with the new values
-    if updates:
-        for key, value in updates.items():
-            current_state[key] = value
-    
+# Function to reset the rate to default
+def reset_rate():
+    global current_rate, current_state
+    rate_encoder.steps = 80
+    current_rate = 80
+    current_state["rate"] = current_rate
     current_state["lastUpdate"] = time.time()
-    
-    # Only broadcast if there are connected clients
-    if not connected_clients:
-        return
-        
-    # Create the message as a JSON string
-    message = json.dumps(current_state)
-    
-    # Add WebSocket frame headers (simplified)
-    frame = bytearray([0x81])  # Text frame
-    length = len(message)
-    
-    if length < 126:
-        frame.append(length)
-    elif length < 65536:
+    print("Rate reset to 80 ppm!")
+
+# Function to reset the A. Output to default
+def reset_a_output():
+    global current_a_output, last_a_output_steps, current_state
+    a_output_encoder.steps = 100
+    last_a_output_steps = 100
+    current_a_output = 10.0
+    current_state["a_output"] = current_a_output
+    current_state["lastUpdate"] = time.time()
+    print("A. Output reset to 10.0 mA!")
+
+# Function to reset the V. Output to default
+def reset_v_output():
+    global current_v_output, last_v_output_steps, current_state
+    v_output_encoder.steps = 100
+    last_v_output_steps = 100
+    current_v_output = 10.0
+    current_state["v_output"] = current_v_output
+    current_state["lastUpdate"] = time.time()
+    print("V. Output reset to 10.0 mA!")
+
+# Simple WebSocket handling functions
+def parse_websocket_frame(data):
+    """Parse a WebSocket frame and return the payload"""
+    if len(data) < 6:
+        return None
+
+    # Get the FIN bit and opcode
+    fin = (data[0] & 0x80) >> 7
+    opcode = data[0] & 0x0F
+
+    # Get the MASK bit and payload length
+    mask = (data[1] & 0x80) >> 7
+    payload_len = data[1] & 0x7F
+
+    # Determine the actual payload length
+    if payload_len == 126:
+        mask_offset = 4
+        payload_len = int.from_bytes(data[2:4], byteorder='big')
+    elif payload_len == 127:
+        mask_offset = 10
+        payload_len = int.from_bytes(data[2:10], byteorder='big')
+    else:
+        mask_offset = 2
+
+    # Get the masking key and payload
+    if mask:
+        masking_key = data[mask_offset:mask_offset+4]
+        payload_offset = mask_offset + 4
+        payload = data[payload_offset:payload_offset+payload_len]
+
+        # Unmask the payload
+        unmasked = bytearray(payload_len)
+        for i in range(payload_len):
+            unmasked[i] = payload[i] ^ masking_key[i % 4]
+        payload = unmasked
+    else:
+        payload_offset = mask_offset
+        payload = data[payload_offset:payload_offset+payload_len]
+
+    # Return the payload as string for text frames
+    if opcode == 0x1:  # Text frame
+        return payload.decode('utf-8')
+    else:
+        return payload
+
+def create_websocket_frame(data, opcode=0x1):
+    """Create a WebSocket frame for the given data"""
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+
+    # Create the frame header
+    frame = bytearray()
+    frame.append(0x80 | opcode)  # FIN bit set, text frame
+
+    # Set the payload length
+    if len(data) < 126:
+        frame.append(len(data))
+    elif len(data) < 65536:
         frame.append(126)
-        frame.extend(length.to_bytes(2, byteorder='big'))
+        frame.extend(len(data).to_bytes(2, byteorder='big'))
     else:
         frame.append(127)
-        frame.extend(length.to_bytes(8, byteorder='big'))
-    
-    # Add the message content
-    frame.extend(message.encode())
-    
-    # Send to all clients
-    clients_to_remove = []
-    for client in connected_clients:
-        try:
-            client.sendall(frame)
-        except:
-            clients_to_remove.append(client)
-    
-    # Remove disconnected clients
-    for client in clients_to_remove:
-        if client in connected_clients:
-            connected_clients.remove(client)
-            try:
-                client.close()
-            except:
-                pass
+        frame.extend(len(data).to_bytes(8, byteorder='big'))
+
+    # Add the payload
+    frame.extend(data)
+    return frame
+
+def handle_websocket_handshake(client_socket):
+    """Handle the WebSocket handshake"""
+    try:
+        # Receive the handshake request
+        data = client_socket.recv(1024).decode('utf-8')
+        if not data:
+            return False
+
+        # Parse the Sec-WebSocket-Key header
+        key = None
+        for line in data.split('\r\n'):
+            if line.startswith('Sec-WebSocket-Key:'):
+                key = line.split(':')[1].strip()
+                break
+
+        if not key:
+            return False
+
+        # Create the WebSocket accept key
+        accept_key = key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+        accept_key = base64.b64encode(hashlib.sha1(accept_key.encode()).digest()).decode()
+
+        # Send the handshake response
+        response = (
+            'HTTP/1.1 101 Switching Protocols\r\n'
+            'Upgrade: websocket\r\n'
+            'Connection: Upgrade\r\n'
+            f'Sec-WebSocket-Accept: {accept_key}\r\n\r\n'
+        )
+        client_socket.sendall(response.encode())
+        return True
+    except Exception as e:
+        print(f"Handshake error: {e}")
+        return False
 
 def handle_websocket_client(client_socket):
     """Handle communication with a WebSocket client"""
+    global connected_clients, current_state
+
+    # Perform the WebSocket handshake
+    if not handle_websocket_handshake(client_socket):
+        print("Handshake failed")
+        try:
+            client_socket.close()
+        except:
+            pass
+        return
+
+    # Add the client to the connected clients list
+    connected_clients.append(client_socket)
+    print(f"New WebSocket client connected: {client_socket.getpeername()}")
+
+    # Send the initial state
     try:
-        # Wait for initial handshake
-        data = client_socket.recv(1024).decode('utf-8')
-        
-        # Basic WebSocket handshake response
-        if "Upgrade: websocket" in data and "Sec-WebSocket-Key:" in data:
-            # Extract the key
-            key = ""
-            for line in data.split('\r\n'):
-                if line.startswith("Sec-WebSocket-Key:"):
-                    key = line.split(': ')[1].strip()
+        initial_state = json.dumps(current_state)
+        client_socket.sendall(create_websocket_frame(initial_state))
+    except Exception as e:
+        print(f"Error sending initial state: {e}")
+
+    # Process client messages
+    client_auth_token = None
+    try:
+        while True:
+            try:
+                # Set a timeout for receive operations
+                client_socket.settimeout(0.5)
+                data = client_socket.recv(1024)
+                if not data:
                     break
-            
-            if key:
-                import hashlib
-                import base64
-                
-                # Calculate the accept key (simplified)
-                accept_key = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-                accept_key = base64.b64encode(hashlib.sha1(accept_key.encode()).digest()).decode()
-                
-                # Send handshake response
-                handshake = (
-                    "HTTP/1.1 101 Switching Protocols\r\n"
-                    "Upgrade: websocket\r\n"
-                    "Connection: Upgrade\r\n"
-                    f"Sec-WebSocket-Accept: {accept_key}\r\n\r\n"
-                )
-                client_socket.sendall(handshake.encode())
-                
-                # Add to connected clients
-                connected_clients.append(client_socket)
-                print(f"WebSocket client connected: {client_socket.getpeername()}")
-                
-                # Send initial state
-                broadcast_state_update()
-                
-                # Keep connection open to receive messages
-                while True:
-                    ready = select.select([client_socket], [], [], 1)
-                    if ready[0]:
-                        frame = client_socket.recv(1024)
-                        if not frame:
-                            break
-                        
-                        # Process incoming message if needed
-                        # This is a simplified implementation that doesn't decode frames
+
+                # Parse the WebSocket frame
+                message = parse_websocket_frame(data)
+                if not message:
+                    continue
+
+                # Process the message as JSON
+                try:
+                    parsed = json.loads(message)
                     
+                    # Handle authentication
+                    if 'token' in parsed:
+                        client_auth_token = parsed['token']
+                        print(f"Client authenticated with token: {client_auth_token}")
+                        
+                        # Send confirmation
+                        response = json.dumps({
+                            "type": "info",
+                            "message": "Authentication successful"
+                        })
+                        client_socket.sendall(create_websocket_frame(response))
+                    
+                    # Handle control updates
+                    elif 'type' in parsed and parsed['type'] == 'control_update' and 'updates' in parsed:
+                        # Check if this is an admin token or allow sensitivity updates for all
+                        if client_auth_token == 'pacemaker_token_123':
+                            # Admin can update everything
+                            apply_control_updates(parsed['updates'])
+                            response = json.dumps({
+                                "type": "info",
+                                "message": "Control updated successfully"
+                            })
+                            client_socket.sendall(create_websocket_frame(response))
+                        elif client_auth_token and ('vSensitivity' in parsed['updates'] or 'aSensitivity' in parsed['updates']):
+                            # Non-admin can only update sensitivity
+                            updates = {
+                                k: v for k, v in parsed['updates'].items() 
+                                if k in ['vSensitivity', 'aSensitivity']
+                            }
+                            apply_control_updates(updates)
+                            response = json.dumps({
+                                "type": "info",
+                                "message": "Sensitivity updated successfully"
+                            })
+                            client_socket.sendall(create_websocket_frame(response))
+                        else:
+                            # Unauthorized
+                            response = json.dumps({
+                                "type": "error",
+                                "message": "Unauthorized control update"
+                            })
+                            client_socket.sendall(create_websocket_frame(response))
+                except json.JSONDecodeError:
+                    print(f"Invalid JSON from client: {message}")
+
+            except socket.timeout:
+                # This is just a timeout on the socket.recv - continue the loop
+                pass
+            except Exception as e:
+                print(f"Error processing client message: {e}")
+                break
+
     except Exception as e:
         print(f"WebSocket client error: {e}")
     finally:
@@ -493,30 +621,126 @@ def handle_websocket_client(client_socket):
             client_socket.close()
         except:
             pass
-        print("WebSocket client disconnected")
+        print(f"WebSocket client disconnected")
 
-def run_websocket_server():
-    """Run a simple WebSocket server"""
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(('0.0.0.0', WS_PORT))
-    server_socket.listen(5)
+def apply_control_updates(updates):
+    """Apply updates from client to the current state"""
+    global current_state, a_sensitivity, v_sensitivity, current_rate, current_a_output, current_v_output, is_locked
     
-    print(f"WebSocket server started on port {WS_PORT}")
+    # Only apply specific updates that we support
+    if 'aSensitivity' in updates:
+        a_sensitivity = float(updates['aSensitivity'])
+        current_state["aSensitivity"] = a_sensitivity
     
+    if 'vSensitivity' in updates:
+        v_sensitivity = float(updates['vSensitivity'])
+        current_state["vSensitivity"] = v_sensitivity
+    
+    if 'rate' in updates:
+        current_rate = int(updates['rate'])
+        current_state["rate"] = current_rate
+    
+    if 'a_output' in updates:
+        current_a_output = float(updates['a_output'])
+        current_state["a_output"] = current_a_output
+    
+    if 'v_output' in updates:
+        current_v_output = float(updates['v_output'])
+        current_state["v_output"] = current_v_output
+    
+    if 'isLocked' in updates:
+        is_locked = bool(updates['isLocked'])
+        current_state["isLocked"] = is_locked
+    
+    # Update the timestamp
+    current_state["lastUpdate"] = time.time()
+
+def broadcast_state():
+    """Broadcast the current state to all WebSocket clients"""
+    global connected_clients, current_state
+    
+    if not connected_clients:
+        return
+    
+    # Create the message
+    try:
+        message = json.dumps(current_state)
+        frame = create_websocket_frame(message)
+        
+        # Send to all clients
+        clients_to_remove = []
+        for client in connected_clients:
+            try:
+                client.sendall(frame)
+            except:
+                clients_to_remove.append(client)
+        
+        # Remove disconnected clients
+        for client in clients_to_remove:
+            if client in connected_clients:
+                connected_clients.remove(client)
+                try:
+                    client.close()
+                except:
+                    pass
+    except Exception as e:
+        print(f"Error broadcasting state: {e}")
+
+def periodic_broadcast():
+    """Periodically broadcast the state to all clients"""
     while True:
         try:
-            client_socket, address = server_socket.accept()
-            client_thread = threading.Thread(
-                target=handle_websocket_client,
-                args=(client_socket,),
-                daemon=True
-            )
-            client_thread.start()
+            broadcast_state()
         except Exception as e:
-            print(f"WebSocket server error: {e}")
+            print(f"Error in periodic broadcast: {e}")
+        time.sleep(1)  # Broadcast every second
 
+def run_websocket_server():
+    """Run the WebSocket server"""
+    try:
+        # Create a socket
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('0.0.0.0', WS_PORT))
+        server_socket.listen(5)
+        
+        print(f"WebSocket server running on port {WS_PORT}")
+        
+        # Start a thread for periodic broadcasts
+        broadcast_thread = threading.Thread(target=periodic_broadcast)
+        broadcast_thread.daemon = True
+        broadcast_thread.start()
+        
+        # Accept client connections
+        while True:
+            try:
+                client_socket, address = server_socket.accept()
+                print(f"New connection from {address}")
+                
+                # Handle the client in a separate thread
+                client_thread = threading.Thread(target=handle_websocket_client, args=(client_socket,))
+                client_thread.daemon = True
+                client_thread.start()
+            except Exception as e:
+                print(f"Error accepting connection: {e}")
+    except Exception as e:
+        print(f"WebSocket server error: {e}")
+    finally:
+        try:
+            server_socket.close()
+        except:
+            pass
 
+# Attach event listeners
+rate_encoder.when_rotated = update_rate
+a_output_encoder.when_rotated = update_a_output
+v_output_encoder.when_rotated = update_v_output
+mode_output_encoder.when_rotated = update_mode_output
+lock_button.when_pressed = toggle_lock
+up_button.when_released = handle_up_button
+down_button.when_released = handle_down_button
+left_button.when_released = handle_left_button
+emergency_button.when_pressed = handle_emergency_button
 
 # New endpoint for WebSocket clients to get full state
 @app.route('/api/state', methods=['GET'])
@@ -545,7 +769,6 @@ def get_rate():
         'max': max_rate
     })
 
-# API endpoints for Rate
 @app.route('/api/rate/set', methods=['POST'])
 def set_rate():
     global current_rate
@@ -558,7 +781,6 @@ def set_rate():
         new_rate = int(data['value'])
         rate_encoder.steps = new_rate
         update_rate()
-        broadcast_state_update({"rate": current_rate})
         return jsonify({'success': True, 'value': current_rate})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -570,13 +792,6 @@ def api_reset_rate():
         
     reset_rate()
     return jsonify({'success': True, 'value': current_rate})
-
-# Function to reset the rate to default
-def reset_rate():
-    global current_rate
-    rate_encoder.steps = 80
-    current_rate = 80
-    print("Rate reset to 80 ppm!")
 
 # API endpoints for A. Output
 @app.route('/api/a_output', methods=['GET'])
@@ -605,7 +820,9 @@ def set_a_output():
         current_a_output = round(current_a_output / step_size) * step_size
         # Make sure it's within bounds
         current_a_output = max(min_a_output, min(current_a_output, max_a_output))
-        broadcast_state_update({"a_output": current_a_output})
+        # Update state
+        current_state["a_output"] = current_a_output
+        current_state["lastUpdate"] = time.time()
         return jsonify({'success': True, 'value': current_a_output})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -618,14 +835,6 @@ def api_reset_a_output():
     reset_a_output()
     return jsonify({'success': True, 'value': current_a_output})
 
-# Function to reset the A. Output to default
-def reset_a_output():
-    global current_a_output, last_a_output_steps
-    a_output_encoder.steps = 100
-    last_a_output_steps = 100
-    current_a_output = 10.0
-    print("A. Output reset to 10.0 mA!")
-
 # API endpoints for V. Output
 @app.route('/api/v_output', methods=['GET'])
 def get_v_output():
@@ -635,7 +844,6 @@ def get_v_output():
         'min': min_v_output,
         'max': max_v_output
     })
-
 
 @app.route('/api/v_output/set', methods=['POST'])
 def set_v_output():
@@ -654,7 +862,9 @@ def set_v_output():
         current_v_output = round(current_v_output / step_size) * step_size
         # Make sure it's within bounds
         current_v_output = max(min_v_output, min(current_v_output, max_v_output))
-        broadcast_state_update({"v_output": current_v_output})
+        # Update state
+        current_state["v_output"] = current_v_output
+        current_state["lastUpdate"] = time.time()
         return jsonify({'success': True, 'value': current_v_output})
     return jsonify({'error': 'No value provided'}), 400
 
@@ -666,14 +876,6 @@ def api_reset_v_output():
         
     reset_v_output()
     return jsonify({'success': True, 'value': current_v_output})
-
-# Function to reset the V. Output to default
-def reset_v_output():
-    global current_v_output, last_v_output_steps
-    v_output_encoder.steps = 100
-    last_v_output_steps = 100
-    current_v_output = 10.0
-    print("V. Output reset to 10.0 mA!")
     
 # New API endpoint for sensitivity controls
 @app.route('/api/sensitivity', methods=['GET'])
@@ -726,9 +928,11 @@ def set_sensitivity():
             # Validate range
             if new_value == 0 or min_a_sensitivity <= new_value <= max_a_sensitivity:
                 a_sensitivity = round(new_value, 1)  # Round to 1 decimal place
+                # Update state
+                current_state["aSensitivity"] = a_sensitivity
+                current_state["lastUpdate"] = time.time()
                 updated = True
                 print(f"A sensitivity set to: {a_sensitivity}")
-                broadcast_state_update({"aSensitivity": a_sensitivity})
             else:
                 return jsonify({'error': f'A sensitivity value out of range ({min_a_sensitivity}-{max_a_sensitivity} or 0)'}), 400
         except Exception as e:
@@ -741,9 +945,11 @@ def set_sensitivity():
             # Validate range
             if new_value == 0 or min_v_sensitivity <= new_value <= max_v_sensitivity:
                 v_sensitivity = round(new_value, 1)  # Round to 1 decimal place
+                # Update state
+                current_state["vSensitivity"] = v_sensitivity
+                current_state["lastUpdate"] = time.time()
                 updated = True
                 print(f"V sensitivity set to: {v_sensitivity}")
-                broadcast_state_update({"vSensitivity": v_sensitivity})
             else:
                 return jsonify({'error': f'V sensitivity value out of range ({min_v_sensitivity}-{max_v_sensitivity} or 0)'}), 400
         except Exception as e:
@@ -778,7 +984,7 @@ def api_reset_encoder():
 # API endpoint for setting mode
 @app.route('/api/mode/set', methods=['POST'])
 def set_mode():
-    global current_mode
+    global current_mode, current_state
     
     # Check if locked
     if is_locked:
@@ -790,11 +996,19 @@ def set_mode():
         # Valid mode is between 0-7
         if 0 <= new_mode <= 7:
             current_mode = new_mode
+            # Update state
+            current_state["mode"] = current_mode
+            current_state["lastUpdate"] = time.time()
+            
             # If setting to DOO mode (5), apply emergency settings
             if new_mode == 5:
                 reset_rate()  # Set rate to 80 ppm
                 current_a_output = 20.0  # Set A output to 20 mA
                 current_v_output = 25.0  # Set V output to 25 mA
+                # Update state
+                current_state["a_output"] = current_a_output
+                current_state["v_output"] = current_v_output
+            
             return jsonify({'success': True, 'mode': current_mode})
         else:
             return jsonify({'error': 'Invalid mode value'}), 400
@@ -803,8 +1017,9 @@ def set_mode():
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed
+    global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
     
+    # Create response data
     status_data = {
         'status': 'ok',
         'rate': current_rate,
@@ -812,6 +1027,10 @@ def health_check():
         'v_output': current_v_output,
         'locked': is_locked,
         'mode': current_mode,
+        'a_sensitivity': a_sensitivity,
+        'v_sensitivity': v_sensitivity,
+        'active_control': active_control,
+        'encoder_active': encoder_activity_flag,
         'buttons': {
             'up_pressed': up_button_pressed,
             'down_pressed': down_button_pressed,
@@ -820,11 +1039,16 @@ def health_check():
         }
     }
     
-    # Reset button states
+    # Reset flags
+    was_up_pressed = up_button_pressed
+    was_down_pressed = down_button_pressed
+    was_left_pressed = left_button_pressed
+    was_emergency_pressed = emergency_button_pressed
     up_button_pressed = False
     down_button_pressed = False
     left_button_pressed = False
     emergency_button_pressed = False
+    encoder_activity_flag = False
     
     return jsonify(status_data)
 
@@ -857,12 +1081,29 @@ def get_hardware_info():
     })
 
 if __name__ == '__main__':
-    # Start WebSocket server in background thread
-    ws_thread = threading.Thread(target=run_websocket_server, daemon=True)
-    ws_thread.start()
+    # Start WebSocket server in a separate thread
+    websocket_thread = threading.Thread(target=run_websocket_server)
+    websocket_thread.daemon = True
+    websocket_thread.start()
+    
+    # Initialize state with current values
+    current_state = {
+        "rate": current_rate,
+        "a_output": current_a_output,
+        "v_output": current_v_output,
+        "aSensitivity": a_sensitivity,
+        "vSensitivity": v_sensitivity,
+        "mode": current_mode,
+        "isLocked": is_locked,
+        "isPaused": False,
+        "pauseTimeLeft": 0,
+        "batteryLevel": 100,
+        "lastUpdate": time.time()
+    }
     
     print("Pacemaker Server Started with WebSocket support")
     print(f"WebSocket server on port {WS_PORT} for real-time data sharing")
+    print(f"HTTP API server on port 5000")
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
@@ -870,8 +1111,7 @@ if __name__ == '__main__':
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")
-    print(f"Left button on pin GPIO 15") # Note: You have this as pin 8 in one place and 15 in another
+    print(f"Left button on pin GPIO 15")
     print(f"Emergency DOO button on pin GPIO 23")
     
-    # Start Flask app
     app.run(host='0.0.0.0', port=5000, debug=False)
