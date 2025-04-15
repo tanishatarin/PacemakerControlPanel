@@ -85,6 +85,21 @@ current_state = {
     "lastUpdate": time.time()
 }
 
+# Add this near the start of the main code
+def initialize_encoder_trackers():
+    # Set initial tracking values for encoders
+    if not hasattr(update_rate, 'last_steps'):
+        update_rate.last_steps = rate_encoder.steps
+    
+    if not hasattr(update_mode_output, 'last_steps'):
+        update_mode_output.last_steps = mode_output_encoder.steps
+    
+    print(f"Initialized mode encoder tracking: steps={mode_output_encoder.steps}")
+
+# Call this function before starting the server
+initialize_encoder_trackers()
+
+
 # Copy all the handler functions and other code from your original pacemaker_server.py
 def handle_down_button():
     global last_down_press_time, down_button_pressed, current_state
@@ -290,6 +305,8 @@ def update_v_output():
 
 def update_mode_output():
     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag, current_state
+    # Add this at the start of update_mode_output
+    print(f"Mode encoder update called, steps={mode_output_encoder.steps}")
     
     # Skip if locked or no active control
     if is_locked or active_control == 'none':
@@ -301,6 +318,7 @@ def update_mode_output():
     # Initialize tracking if needed
     if not hasattr(update_mode_output, 'last_steps'):
         update_mode_output.last_steps = current_steps
+        print(f"Initialized mode encoder tracking: steps={current_steps}")
         return
     
     # Calculate difference
@@ -310,56 +328,70 @@ def update_mode_output():
     if step_diff == 0:
         return
     
+    # Sanity check: encoder reports a weird jump?
+    if abs(step_diff) > 10:
+        print(f"[Mode Encoder] Ignoring jump: {step_diff} steps")
+        update_mode_output.last_steps = current_steps
+        return
+    
     # Update activity timestamp and set flag
     last_mode_encoder_activity = time.time()
     encoder_activity_flag = True
     
-    # Update tracking
+    # Update tracking immediately to prevent multiple processing
+    last_steps = update_mode_output.last_steps
     update_mode_output.last_steps = current_steps
+    
+    print(f"Mode encoder movement detected: {step_diff} steps")
     
     # Process based on control type
     if active_control == 'a_sensitivity':
-        # For A sensitivity (clockwise decreases, counter-clockwise increases)
-        if step_diff > 0:  # Clockwise - decrease
-            if a_sensitivity > min_a_sensitivity:
-                a_sensitivity = max(min_a_sensitivity, a_sensitivity - 0.1)
-            elif a_sensitivity == min_a_sensitivity:
-                a_sensitivity = 0  # Set to ASYNC
-        else:  # Counter-clockwise - increase
-            if a_sensitivity == 0:
-                a_sensitivity = min_a_sensitivity  # Come out of ASYNC
-            elif a_sensitivity < max_a_sensitivity:
-                a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
-                
-        a_sensitivity = round(a_sensitivity, 1)
-        
-        # Update state
-        current_state["aSensitivity"] = a_sensitivity
-        current_state["lastUpdate"] = time.time()
-        
-        print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
-    
+        # Use step_diff directly instead of comparing again
+        process_a_sensitivity_change(step_diff)
     elif active_control == 'v_sensitivity':
-        # For V sensitivity (clockwise decreases, counter-clockwise increases)
-        if step_diff > 0:  # Clockwise - decrease
-            if v_sensitivity > min_v_sensitivity:
-                v_sensitivity = max(min_v_sensitivity, v_sensitivity - 0.2)
-            elif v_sensitivity == min_v_sensitivity:
-                v_sensitivity = 0  # Set to ASYNC
-        else:  # Counter-clockwise - increase
-            if v_sensitivity == 0:
-                v_sensitivity = min_v_sensitivity  # Come out of ASYNC
-            elif v_sensitivity < max_v_sensitivity:
-                v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
-                
-        v_sensitivity = round(v_sensitivity, 1)
-        
-        # Update state
-        current_state["vSensitivity"] = v_sensitivity
-        current_state["lastUpdate"] = time.time()
-        
-        print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
+        process_v_sensitivity_change(step_diff)
 
+# Helper functions to make the code cleaner
+def process_a_sensitivity_change(step_diff):
+    global a_sensitivity, current_state
+    
+    # Clockwise - decrease, counter-clockwise - increase
+    if step_diff > 0:  # Clockwise
+        if a_sensitivity > min_a_sensitivity:
+            a_sensitivity = max(min_a_sensitivity, a_sensitivity - 0.1)
+        elif a_sensitivity == min_a_sensitivity:
+            a_sensitivity = 0  # ASYNC
+    else:  # Counter-clockwise
+        if a_sensitivity == 0:
+            a_sensitivity = min_a_sensitivity  # Come out of ASYNC
+        elif a_sensitivity < max_a_sensitivity:
+            a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
+            
+    a_sensitivity = round(a_sensitivity, 1)
+    current_state["aSensitivity"] = a_sensitivity
+    current_state["lastUpdate"] = time.time()
+    print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
+
+def process_v_sensitivity_change(step_diff):
+    global v_sensitivity, current_state
+    
+    # Clockwise - decrease, counter-clockwise - increase
+    if step_diff > 0:  # Clockwise
+        if v_sensitivity > min_v_sensitivity:
+            v_sensitivity = max(min_v_sensitivity, v_sensitivity - 0.2)
+        elif v_sensitivity == min_v_sensitivity:
+            v_sensitivity = 0  # ASYNC
+    else:  # Counter-clockwise
+        if v_sensitivity == 0:
+            v_sensitivity = min_v_sensitivity  # Come out of ASYNC
+        elif v_sensitivity < max_v_sensitivity:
+            v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
+            
+    v_sensitivity = round(v_sensitivity, 1)
+    current_state["vSensitivity"] = v_sensitivity
+    current_state["lastUpdate"] = time.time()
+    print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
+    
 def hardware_reset_mode_encoder():
     """Force reset of mode encoder state at hardware level"""
     global mode_output_encoder
@@ -722,10 +754,12 @@ def periodic_broadcast():
     """Periodically broadcast the state to all clients"""
     while True:
         try:
-            broadcast_state()
+            # Only broadcast if there are clients connected
+            if connected_clients:
+                broadcast_state()
         except Exception as e:
             print(f"Error in periodic broadcast: {e}")
-        time.sleep(1)  # Broadcast every second
+        time.sleep(0.1)  # Broadcast 10 times per second
 
 def run_websocket_server():
     """Run the WebSocket server"""
