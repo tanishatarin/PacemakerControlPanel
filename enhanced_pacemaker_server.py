@@ -20,7 +20,7 @@ connected_clients = []
 rate_encoder = RotaryEncoder(27, 22, max_steps=200, wrap=False)
 a_output_encoder = RotaryEncoder(21, 20, max_steps=200, wrap=False)
 v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
-mode_output_encoder = RotaryEncoder(10, 9,, max_steps=200, wrap=False)
+mode_output_encoder = RotaryEncoder(10, 9, max_steps=200, wrap=False)
 lock_button = Button(17, bounce_time=0.05)
 up_button = Button(26, bounce_time=0.05)
 down_button = Button(16, bounce_time=0.05)
