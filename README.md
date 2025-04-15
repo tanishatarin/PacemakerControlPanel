@@ -59,7 +59,7 @@ Down 14
 
 Left 15
 
-DOO 23, LED 24 
+DOO 23
 
 Power 5, LED 16 
 
