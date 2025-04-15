@@ -85,20 +85,6 @@ current_state = {
     "lastUpdate": time.time()
 }
 
-# Add this near the start of the main code
-def initialize_encoder_trackers():
-    # Set initial tracking values for encoders
-    if not hasattr(update_rate, 'last_steps'):
-        update_rate.last_steps = rate_encoder.steps
-    
-    if not hasattr(update_mode_output, 'last_steps'):
-        update_mode_output.last_steps = mode_output_encoder.steps
-    
-    print(f"Initialized mode encoder tracking: steps={mode_output_encoder.steps}")
-
-# Call this function before starting the server
-initialize_encoder_trackers()
-
 
 # Copy all the handler functions and other code from your original pacemaker_server.py
 def handle_down_button():
@@ -1168,6 +1154,20 @@ if __name__ == '__main__':
         "lastUpdate": time.time()
     }
     
+        # Add this near the start of the main code
+    def initialize_encoder_trackers():
+        # Set initial tracking values for encoders
+        if not hasattr(update_rate, 'last_steps'):
+            update_rate.last_steps = rate_encoder.steps
+        
+        if not hasattr(update_mode_output, 'last_steps'):
+            update_mode_output.last_steps = mode_output_encoder.steps
+        
+        print(f"Initialized mode encoder tracking: steps={mode_output_encoder.steps}")
+
+    # Call this function before starting the server
+    initialize_encoder_trackers()
+    
     # Ensure mode encoder starts synced
     update_mode_output.last_steps = mode_output_encoder.steps
     
@@ -1177,7 +1177,7 @@ if __name__ == '__main__':
     print(f"Rate encoder on pins CLK=27, DT=22 (initial value: {current_rate} ppm)")
     print(f"A. Output encoder on pins CLK=21, DT=20 (initial value: {current_a_output} mA)")
     print(f"V. Output encoder on pins CLK=13, DT=6 (initial value: {current_v_output} mA)")
-    print(f"Mode Output encoder on pins CLK=8, DT=7 (initial value: {current_mode_output})")
+    print(f"Mode Output encoder on pins CLK=10, DT=9 (initial value: {current_mode_output})")
     print(f"Lock button on pin GPIO 17 (initial state: {'Locked' if is_locked else 'Unlocked'})")
     print(f"Up button on pin GPIO 26")
     print(f"Down button on pin GPIO 14")
