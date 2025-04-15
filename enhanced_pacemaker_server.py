@@ -23,8 +23,8 @@ v_output_encoder = RotaryEncoder(13, 6, max_steps=200, wrap=False)
 mode_output_encoder = RotaryEncoder(8, 7, max_steps=200, wrap=False)
 lock_button = Button(17, bounce_time=0.05)
 up_button = Button(26, bounce_time=0.05)
-down_button = Button(14, bounce_time=0.05)
-left_button = Button(15, bounce_time=0.05)
+down_button = Button(16, bounce_time=0.05)
+left_button = Button(18, bounce_time=0.05)
 emergency_button = Button(23, bounce_time=0.05)
 
 # Initial values
