@@ -819,8 +819,9 @@ def set_rate():
 @app.route('/api/rate/reset', methods=['POST'])
 def api_reset_rate():
     # Check if locked
-    if is_locked or current_mode == 5:  # 5 = DOO mode
-        return jsonify({'error': 'Device is locked or in DOO mode'}), 403
+    # if is_locked or current_mode == 5:  # 5 = DOO mode
+    if is_locked:
+        return jsonify({'error': 'Device is locked '}), 403 # removed dooo mode error 
         
     reset_rate()
     return jsonify({'success': True, 'value': current_rate})
