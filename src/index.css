@@ -1,3 +1,4 @@
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      src/index.css                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -80,15 +81,15 @@ html, body {
 }
 
 #root {
-  transform: rotate(90deg);
+  transform: rotate(90deg) scale(0.9);
   transform-origin: top left;
   width: 100vh;
   height: 100vw;
   position: absolute;
   top: 100%;
   left: 100%;
-  margin-top: -55vw;
-  margin-left: -1vh;
+  margin-top: -50vw;
+  margin-left: -33vh;
 }
 
 /* Optional: Add padding around content */
