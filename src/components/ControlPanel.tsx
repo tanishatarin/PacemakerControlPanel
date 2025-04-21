@@ -867,11 +867,16 @@ useEffect(() => {
   return (
     <div className="max-w-2xl mx-auto p-8 bg-gray-50 min-h-screen">
       {/* Battery and Mode Header */}
-      <BatteryHeader
+      {/* <BatteryHeader
         batteryLevel={batteryLevel}
         selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
         isLocked={isLocked}
         onBatteryChange={setBatteryLevel}
+      /> */}
+
+      <BatteryHeader
+        selectedMode={modes[pendingModeIndex]}
+        isLocked={isLocked}
       />
 
     {/* Encoder Connection Status */}
