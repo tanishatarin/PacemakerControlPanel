@@ -356,12 +356,12 @@ def update_mode_output():
     # Calculate difference
     step_diff = current_steps - update_mode_output.last_steps
     
-    # Only process if there's actual movement
+    # Only process if there's actual movement and it's not too large
     if step_diff == 0:
         return
     
     # Sanity check: encoder reports a weird jump?
-    if abs(step_diff) > 10:
+    if abs(step_diff) > 4:  # Reduced from 10 to 4 to catch smaller jumps
         print(f"[Mode Encoder] Ignoring jump: {step_diff} steps")
         update_mode_output.last_steps = current_steps
         return
@@ -371,21 +371,19 @@ def update_mode_output():
     encoder_activity_flag = True
     
     # Update tracking immediately to prevent multiple processing
-    last_steps = update_mode_output.last_steps
     update_mode_output.last_steps = current_steps
     
     print(f"Mode encoder movement detected: {step_diff} steps")
     
     # Process based on control type
     if active_control == 'a_sensitivity':
-        # Use step_diff directly instead of comparing again
+        # Use step_diff directly 
         process_a_sensitivity_change(step_diff)
     elif active_control == 'v_sensitivity':
         process_v_sensitivity_change(step_diff)
     
-    # IMPORTANT: Immediately broadcast state change to all WebSocket clients
+    # Important: Broadcast state change to all WebSocket clients immediately
     broadcast_state()
-
 
 # Helper functions to make the code cleaner
 # def process_a_sensitivity_change(step_diff):
@@ -429,24 +427,36 @@ def update_mode_output():
 #     print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
     
     
-
-# Helper functions to make the code cleaner
 def process_a_sensitivity_change(step_diff):
     global a_sensitivity, current_state
     
-    # Clockwise - decrease, counter-clockwise - increase
-    if step_diff > 0:  # Clockwise
+    # Determine step size based on the current value
+    step_size = 0.1
+    if a_sensitivity > 1.0 and a_sensitivity <= 2.0:
+        step_size = 0.2
+    elif a_sensitivity > 2.0 and a_sensitivity <= 5.0:
+        step_size = 0.5
+    elif a_sensitivity > 5.0:
+        step_size = 1.0
+    
+    # Apply smaller changes for each step (divide by 2 for smoother control)
+    actual_change = step_size * (abs(step_diff) / 2)
+    if actual_change < 0.1:  # Ensure minimum change
+        actual_change = 0.1
+    
+    # Direction control
+    if step_diff > 0:  # Clockwise - decrease sensitivity
         if a_sensitivity > min_a_sensitivity:
-            a_sensitivity = max(min_a_sensitivity, a_sensitivity - 0.1)
+            a_sensitivity = max(min_a_sensitivity, a_sensitivity - actual_change)
         elif a_sensitivity == min_a_sensitivity:
             a_sensitivity = 0  # ASYNC
-    else:  # Counter-clockwise
+    else:  # Counter-clockwise - increase sensitivity
         if a_sensitivity == 0:
             a_sensitivity = min_a_sensitivity  # Come out of ASYNC
         elif a_sensitivity < max_a_sensitivity:
-            a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
+            a_sensitivity = min(max_a_sensitivity, a_sensitivity + actual_change)
             
-    a_sensitivity = round(a_sensitivity, 1)
+    a_sensitivity = round(a_sensitivity, 1)  # Round to 1 decimal place
     current_state["aSensitivity"] = a_sensitivity
     current_state["lastUpdate"] = time.time()
     print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
@@ -454,22 +464,37 @@ def process_a_sensitivity_change(step_diff):
 def process_v_sensitivity_change(step_diff):
     global v_sensitivity, current_state
     
-    # Clockwise - decrease, counter-clockwise - increase
-    if step_diff > 0:  # Clockwise
+    # Determine step size based on the current value
+    step_size = 0.2
+    if v_sensitivity > 1.0 and v_sensitivity <= 3.0:
+        step_size = 0.5
+    elif v_sensitivity > 3.0 and v_sensitivity <= 10.0:
+        step_size = 1.0
+    elif v_sensitivity > 10.0:
+        step_size = 2.0
+    
+    # Apply smaller changes for each step (divide by 2 for smoother control)
+    actual_change = step_size * (abs(step_diff) / 2)
+    if actual_change < 0.2:  # Ensure minimum change
+        actual_change = 0.2
+    
+    # Direction control
+    if step_diff > 0:  # Clockwise - decrease sensitivity
         if v_sensitivity > min_v_sensitivity:
-            v_sensitivity = max(min_v_sensitivity, v_sensitivity - 0.2)
+            v_sensitivity = max(min_v_sensitivity, v_sensitivity - actual_change)
         elif v_sensitivity == min_v_sensitivity:
             v_sensitivity = 0  # ASYNC
-    else:  # Counter-clockwise
+    else:  # Counter-clockwise - increase sensitivity
         if v_sensitivity == 0:
             v_sensitivity = min_v_sensitivity  # Come out of ASYNC
         elif v_sensitivity < max_v_sensitivity:
-            v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
+            v_sensitivity = min(max_v_sensitivity, v_sensitivity + actual_change)
             
-    v_sensitivity = round(v_sensitivity, 1)
+    v_sensitivity = round(v_sensitivity, 1)  # Round to 1 decimal place
     current_state["vSensitivity"] = v_sensitivity
     current_state["lastUpdate"] = time.time()
     print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
+
 
 
 
@@ -486,13 +511,28 @@ def hardware_reset_mode_encoder():
     
     print(f"Hard reset of mode encoder to steps={current_steps}")
 
+# def reset_stuck_encoders():
+#     global mode_output_encoder, last_mode_encoder_activity
+    
+#     current_time = time.time()
+    
+#     # If it's been more than 3 seconds since last activity and there's an active control
+#     if current_time - last_mode_encoder_activity > 3 and active_control != 'none':
+#         # Reset the steps to match the logical state
+#         current_steps = mode_output_encoder.steps
+        
+#         # Only reset if update_mode_output.last_steps exists and differs
+#         if hasattr(update_mode_output, 'last_steps') and update_mode_output.last_steps != current_steps:
+#             print(f"Resetting stuck encoder: {update_mode_output.last_steps} → {current_steps}")
+#             update_mode_output.last_steps = current_steps
+
 def reset_stuck_encoders():
-    global mode_output_encoder, last_mode_encoder_activity
+    global mode_output_encoder, last_mode_encoder_activity, active_control
     
     current_time = time.time()
     
-    # If it's been more than 3 seconds since last activity and there's an active control
-    if current_time - last_mode_encoder_activity > 3 and active_control != 'none':
+    # If it's been more than 2 seconds since last activity and there's an active control
+    if current_time - last_mode_encoder_activity > 2 and active_control != 'none':
         # Reset the steps to match the logical state
         current_steps = mode_output_encoder.steps
         
@@ -500,6 +540,9 @@ def reset_stuck_encoders():
         if hasattr(update_mode_output, 'last_steps') and update_mode_output.last_steps != current_steps:
             print(f"Resetting stuck encoder: {update_mode_output.last_steps} → {current_steps}")
             update_mode_output.last_steps = current_steps
+            
+            # Also send a state update to ensure client and server are in sync
+            broadcast_state()
 
 # Function to toggle lock state
 def toggle_lock():
@@ -877,7 +920,6 @@ def broadcast_state():
 #         time.sleep(0.1)  # Broadcast 10 times per second
 
 
-# Also update the periodic_broadcast function to increase frequency
 def periodic_broadcast():
     """Periodically broadcast the state to all clients"""
     while True:
@@ -887,9 +929,8 @@ def periodic_broadcast():
                 broadcast_state()
         except Exception as e:
             print(f"Error in periodic broadcast: {e}")
-        time.sleep(0.05)  # Broadcast 20 times per second (reduced from 0.1)
-
-
+        time.sleep(0.03)  # Broadcast 33 times per second (reduced from 0.05)
+        
 def run_websocket_server():
     """Run the WebSocket server"""
     try:
@@ -1165,16 +1206,34 @@ def set_sensitivity():
     else:
         return jsonify({'error': 'No valid parameters provided'}), 400
     
-# Add a new API endpoint for emergency reset
+# # Add a new API endpoint for emergency reset
+# @app.route('/api/reset_encoder', methods=['POST'])
+# def api_reset_encoder():
+#     encoder_type = request.json.get('type', 'mode')
+    
+#     if encoder_type == 'mode':
+#         hardware_reset_mode_encoder()
+#         return jsonify({'success': True, 'message': 'Mode encoder reset successful'})
+#     else:
+#         return jsonify({'error': 'Unknown encoder type'}), 400
+     
 @app.route('/api/reset_encoder', methods=['POST'])
 def api_reset_encoder():
     encoder_type = request.json.get('type', 'mode')
     
     if encoder_type == 'mode':
         hardware_reset_mode_encoder()
-        return jsonify({'success': True, 'message': 'Mode encoder reset successful'})
+        # Also reset both sensitivity values to defaults
+        global a_sensitivity, v_sensitivity
+        a_sensitivity = 0.5
+        v_sensitivity = 2.0
+        current_state["aSensitivity"] = a_sensitivity
+        current_state["vSensitivity"] = v_sensitivity
+        current_state["lastUpdate"] = time.time()
+        broadcast_state()
+        return jsonify({'success': True, 'message': 'Mode encoder reset successful with defaults'})
     else:
-        return jsonify({'error': 'Unknown encoder type'}), 400
+        return jsonify({'error': 'Unknown encoder type'}), 400     
      
     
 # API endpoint for setting mode

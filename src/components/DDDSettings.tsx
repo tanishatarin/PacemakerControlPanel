@@ -57,13 +57,21 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   const handleASliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const sliderValue = parseFloat(e.target.value);
     const actualValue = aSliderToValue(sliderValue);
-    handleChange('aSensitivity', parseFloat(actualValue.toFixed(1)));
+    
+    // Only update if value has changed significantly
+    if (Math.abs(actualValue - settings.aSensitivity) > 0.05) {
+      handleChange('aSensitivity', parseFloat(actualValue.toFixed(1)));
+    }
   };
-
+  
   const handleVSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const sliderValue = parseFloat(e.target.value);
     const actualValue = vSliderToValue(sliderValue);
-    handleChange('vSensitivity', parseFloat(actualValue.toFixed(1)));
+    
+    // Only update if value has changed significantly
+    if (Math.abs(actualValue - settings.vSensitivity) > 0.05) {
+      handleChange('vSensitivity', parseFloat(actualValue.toFixed(1)));
+    }
   };
 
   // Effect to update hardware encoder active control based on selected setting
