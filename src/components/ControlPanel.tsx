@@ -1036,8 +1036,8 @@ useEffect(() => {
       {/* Battery and Mode Header */}
       <BatteryHeader
         // batteryLevel={batteryLevel}
-        // selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
-        selectedMode={modes[selectedModeIndex]}
+        selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
+        // selectedMode={modes[selectedModeIndex]}
         isLocked={isLocked}
         // onBatteryChange={setBatteryLevel}
       />
