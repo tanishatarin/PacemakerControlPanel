@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronUp, ChevronDown, Key } from 'lucide-react';
 import { BatteryHeader } from './BatteryHeader';
-import Notifications from './Notifications';
+// import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
@@ -1048,13 +1048,13 @@ useEffect(() => {
     /> */}
 
     {/* Encoder Connection Status */}
-    {encoderConnected && (
+    {/* {encoderConnected && (
       <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
         Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
           ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
           : ''}
       </div>
-    )}
+    )} */}
 
 
       {/* Emergency Mode Button */}
@@ -1135,12 +1135,12 @@ useEffect(() => {
       </div>
 
       {/* Notifications */}
-      <Notifications
+      {/* <Notifications
         showAsyncMessage={showAsyncMessage}
         showLockMessage={showLockMessage}
         isPausing={isPausing}
         // pauseTimeLeft={pauseTimeLeft}
-      />
+      /> */}
     </div>
   );
 };

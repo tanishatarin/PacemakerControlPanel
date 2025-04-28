@@ -102,7 +102,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
                     <text 
                     x={minPos.x + 18} 
                     y={minPos.y + 8} 
-                    className="text-[13px] fill-gray-400"
+                    className="text-[13px] fill-gray-600"
                     textAnchor="end"
                     dominantBaseline="middle"
                     >
@@ -111,7 +111,7 @@ const CircularControl: React.FC<ControlSectionProps> = ({
                     <text 
                     x={maxPos.x - 21} 
                     y={maxPos.y + 8} 
-                    className="text-[13px] fill-gray-400"
+                    className="text-[13px] fill-gray-600"
                     textAnchor="start"
                     dominantBaseline="middle"
                     >
