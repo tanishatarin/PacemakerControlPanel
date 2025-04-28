@@ -4,14 +4,14 @@ interface NotificationsProps {
   showAsyncMessage: boolean;
   showLockMessage: boolean;
   isPausing: boolean;
-  pauseTimeLeft: number;
+  // pauseTimeLeft: number;
 }
 
 const Notifications: React.FC<NotificationsProps> = ({
   showAsyncMessage,
   showLockMessage,
   isPausing,
-  pauseTimeLeft
+  // pauseTimeLeft
 }) => {
   if (!showAsyncMessage && !showLockMessage && !isPausing) {
     return null;
@@ -36,7 +36,7 @@ const Notifications: React.FC<NotificationsProps> = ({
       {isPausing && (
         <div className="bg-white p-4 rounded-xl shadow-lg">
           <p className="text-yellow-500 font-medium">Pacing Paused</p>
-          <p className="text-sm text-gray-600">Time remaining: {pauseTimeLeft}s</p>
+          {/* <p className="text-sm text-gray-600">Time remaining: {pauseTimeLeft}s</p> */}
         </div>
       )}
     </div>

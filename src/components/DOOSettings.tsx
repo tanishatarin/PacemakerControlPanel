@@ -13,15 +13,15 @@ const DOOSettings: React.FC<DOOSettingsProps> = () => {
         <div className="w-5"></div> {/* Spacer for alignment */}
       </div>
       
-      <div className="p-4">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+      <div className="p-4 space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-2">
           <h3 className="text-red-600 font-medium mb-1">Asynchronous Pacing Active</h3>
           <p className="text-sm text-red-700">
             DOO mode is an emergency asynchronous pacing mode that paces both chambers at fixed rates regardless of the patient's intrinsic cardiac activity.
           </p>
         </div>
 
-        <div className="mt-4 text-center text-sm text-gray-600">
+        <div className="mt-4 text-center text-sm text-gray-600 p-3">
           Press the Emergency Mode button to exit
         </div>
       </div>

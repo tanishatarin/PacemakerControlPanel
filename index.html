@@ -2,7 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#ffffff">
+
+    <style>
+      * {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        user-select: none;
+      }
+      
+      /* Prevent pull-to-refresh and overscroll effects */
+      html, body {
+        overscroll-behavior: none;
+        touch-action: pan-x pan-y;
+        height: 100%;
+        position: fixed;
+        width: 100%;
+      }
+    </style>
+
     <title>Pacemaker Control Panel</title>
   </head>
   <body>

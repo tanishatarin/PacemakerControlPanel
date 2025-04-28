@@ -27,7 +27,8 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem
+    --radius: 0.5rem;
+    --app-bg: #E5EDF8;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -53,21 +54,110 @@
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%
+    --chart-5: 340 75% 55%;
+    --app-bg: #1e293b; /* A dark blue color for dark mode */
   }
 }
+
 @layer base {
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: var(--app-bg);
   }
 }
 
-.rotated-app {
-  /*transform: rotate(90deg);
-  width: 100vh;  
+/* Set up the root container to fill the entire window */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--app-bg);
+}
+
+/* Apply rotation to the root element */
+#root {
+  transform: rotate(90deg);
+  transform-origin: center center;
+  width: 100vh;
   height: 100vw;
-  overflow-x: hidden;*/
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-top: -50vw; /* Half of height */
+  margin-left: -50vh; /* Half of width */
+}
+
+/* Make sure the pacemaker app container fills its parent */
+.min-h-screen {
+  min-height: 100%;
+  width: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  background-color: var(--app-bg);
+}
+
+/* Make sure buttons are properly sized for touch */
+button, [role="button"] {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Make sure controls are visible */
+.bg-white.rounded-3xl {
+  margin-bottom: 16px;
+  background-color: white !important;
+}
+
+/* Ensure proper button spacing */
+.gap-3 {
+  gap: 12px;
+}
+
+/* Make sure icons in buttons are visible */
+svg {
+  display: block;
+}
+
+/* Ensure controls display correctly */
+.w-5, .h-5, .w-6, .h-6 {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* Handle emergency button */
+.bg-red-500 {
+  background-color: #ef4444 !important;
+}
+
+/* Fix mode header */
+.text-xl.font-bold {
+  font-size: 1.25rem !important;
+}
+
+/* Improve battery display */
+.w-2.h-6 {
+  width: 3px !important;
+  height: 14px !important;
+  display: block !important;
+}
+
+/* Add responsive scaling for different screen sizes */
+@media (max-width: 768px) {
+  #root {
+    transform: rotate(90deg) scale(0.9);
+  }
+}
+
+@media (max-width: 480px) {
+  #root {
+    transform: rotate(90deg) scale(0.85);
+  }
 }

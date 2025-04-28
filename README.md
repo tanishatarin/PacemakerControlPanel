@@ -11,8 +11,9 @@
 
 2. then run the pythn files in the virtual environment:
     ```bash
-    sudo python3 pacemaker_server.py
+    sudo python3 enhanced_pacemaker_server.py
     ```
+    * the enhanced version has the websocket configured to send data to the modules app 
 
 
 
@@ -25,6 +26,11 @@ pnpm dev
 Open the browser and navigate to <http://localhost:5173/>. 
 
 
+## Authentication Tokens
+### Two tokens are pre-configured:
+
+* pacemaker_token_123: Admin access (can control the pacemaker)
+* secondary_app_token_456: View-only access (can only receive data)
 
 
 ### GPIO Pins for Encoders 
@@ -53,7 +59,7 @@ Down 14
 
 Left 15
 
-DOO 23, LED 24 
+DOO 23
 
 Power 5, LED 16 
 
@@ -61,8 +67,8 @@ pause ??
 
 
 to ensure things work properly: 
- black = ground 
- red = 5 volts 
- blue = logic pin 
- yellow = ground 
+ black = ground = negative
+ red = 5 volts = positive
+ blue = logic pin = rpi
+ yellow = ground = negative
 

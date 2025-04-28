@@ -3,3 +3,5 @@ Flask-CORS==3.0.10
 gpiozero==1.6.2
 RPi.GPIO==0.7.1
 pigpio==1.78
+websockets==11.0.3
+asyncio==3.4.3

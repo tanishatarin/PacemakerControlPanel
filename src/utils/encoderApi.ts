@@ -44,9 +44,9 @@ export interface EncoderControlData {
   v_output?: number;
   locked?: boolean;
   mode?: number;
+  active_control?: string;
   a_sensitivity?: number;
   v_sensitivity?: number;
-  active_control?: string;
 }
 
 // Base URL for API calls
@@ -177,7 +177,8 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
     }
 
     // Handle sensitivity updates
-    if (data.a_sensitivity !== undefined || data.v_sensitivity !== undefined || data.active_control !== undefined) {
+     // Modified sensitivity update logic with better error handling
+     if (data.a_sensitivity !== undefined || data.v_sensitivity !== undefined || data.active_control !== undefined) {
       const sensitivityData: any = {};
       
       if (data.a_sensitivity !== undefined) {
@@ -193,13 +194,23 @@ export const updateControls = async (data: EncoderControlData): Promise<void> =>
       }
       
       if (Object.keys(sensitivityData).length > 0) {
-        promises.push(
-          fetch(`${getBaseUrl()}/sensitivity/set`, {
+        try {
+          const response = await fetch(`${getBaseUrl()}/sensitivity/set`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sensitivityData),
-          }).then(handleApiError)
-        );
+          });
+          
+          // If we get a 403, it's likely because the device is locked
+          // Just log it rather than treating it as a fatal error
+          if (response.status === 403) {
+            console.log('Device locked - sensitivity update rejected');
+          } else if (!response.ok) {
+            console.error(`Sensitivity update failed: ${response.status}`);
+          }
+        } catch (err) {
+          console.error('Error in sensitivity update:', err);
+        }
       }
     }
 
@@ -259,7 +270,6 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
-
 // Get the current sensitivity settings
 export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensitivity: number, active_control: string} | null> => {
   try {
@@ -284,7 +294,6 @@ export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensit
     return null;
   }
 };
-
 
 // Add a debounce utility function
 const debounce = <F extends (...args: any[]) => any>(
@@ -319,7 +328,6 @@ export const updateSensitivityControlDebounced = debounce(
   100 // 100ms debounce time
 );
 
-// Add to the polling function to ensure hardware emergency button works
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
@@ -327,6 +335,14 @@ export const startEncoderPolling = (
   ignoreUpdateSources: string[] = []
 ) => {
   let isPolling = true;
+  
+  // Button state trackers to prevent duplicate events
+  let lastButtonStates = {
+    up: false,
+    down: false,
+    left: false,
+    emergency: false
+  };
   
   const pollHealth = async () => {
     if (!isPolling) return;
@@ -346,32 +362,47 @@ export const startEncoderPolling = (
           locked: status.locked,
           mode: status.mode,
           a_sensitivity: status.a_sensitivity,
-          v_sensitivity: status.v_sensitivity,
-          active_control: status.active_control
+          v_sensitivity: status.v_sensitivity
         };
         
         onDataUpdate(controlData);
         
-        // Check for button presses
+        // Check for button presses - with guard against duplicate events
         if (status.buttons) {
-          // Handle up button press
-          if (status.buttons.up_pressed) {
+          // Handle up button press - only trigger once per press
+          if (status.buttons.up_pressed && !lastButtonStates.up) {
+            console.log("Detected UP button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-up-button-pressed'));
+            lastButtonStates.up = true;
+          } else if (!status.buttons.up_pressed && lastButtonStates.up) {
+            lastButtonStates.up = false; // Reset the state tracking
           }
           
-          // Handle down button press
-          if (status.buttons.down_pressed) {
+          // Handle down button press - only trigger once per press
+          if (status.buttons.down_pressed && !lastButtonStates.down) {
+            console.log("Detected DOWN button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-down-button-pressed'));
+            lastButtonStates.down = true;
+          } else if (!status.buttons.down_pressed && lastButtonStates.down) {
+            lastButtonStates.down = false; // Reset the state tracking
           }
           
-          // Handle left button press
-          if (status.buttons.left_pressed) {
+          // Handle left button press - only trigger once per press
+          if (status.buttons.left_pressed && !lastButtonStates.left) {
+            console.log("Detected LEFT button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-left-button-pressed'));
+            lastButtonStates.left = true;
+          } else if (!status.buttons.left_pressed && lastButtonStates.left) {
+            lastButtonStates.left = false; // Reset the state tracking
           }
           
-          // Handle emergency button press
-          if (status.buttons.emergency_pressed) {
+          // Handle emergency button press - only trigger once per press
+          if (status.buttons.emergency_pressed && !lastButtonStates.emergency) {
+            console.log("Detected EMERGENCY button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
+            lastButtonStates.emergency = true;
+          } else if (!status.buttons.emergency_pressed && lastButtonStates.emergency) {
+            lastButtonStates.emergency = false; // Reset the state tracking
           }
         }
       }

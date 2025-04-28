@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { updateControls } from '../utils/encoderApi';
 
 // Interface for the DDD Settings component
@@ -27,6 +27,8 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   selectedSetting = 'aSensitivity',
   encoderConnected = false
 }) => {
+  const [hardwareValues, setHardwareValues] = useState({ a: 0, v: 0 });
+
   const handleChange = (key: string, value: any) => {
     if (isLocked) return;
     onSettingsChange(key, value);
@@ -57,32 +59,50 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   const handleASliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const sliderValue = parseFloat(e.target.value);
     const actualValue = aSliderToValue(sliderValue);
-    handleChange('aSensitivity', parseFloat(actualValue.toFixed(1)));
+    
+    // Only update if value has changed significantly
+    if (Math.abs(actualValue - settings.aSensitivity) > 0.05) {
+      handleChange('aSensitivity', parseFloat(actualValue.toFixed(1)));
+    }
   };
-
+  
   const handleVSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const sliderValue = parseFloat(e.target.value);
     const actualValue = vSliderToValue(sliderValue);
-    handleChange('vSensitivity', parseFloat(actualValue.toFixed(1)));
+    
+    // Only update if value has changed significantly
+    if (Math.abs(actualValue - settings.vSensitivity) > 0.05) {
+      handleChange('vSensitivity', parseFloat(actualValue.toFixed(1)));
+    }
   };
 
-  // Effect to update hardware encoder active control based on selected setting
-  // Inside the useEffect for hardware controls
-  // Add this function after the component declaration
-  const optimizeEncoderTransition = useCallback(() => {
-    if (encoderConnected && selectedSetting) {
-      const controlType = selectedSetting === 'aSensitivity' ? 'a_sensitivity' : 'v_sensitivity';
-      const sensitivityValue = selectedSetting === 'aSensitivity' ? settings.aSensitivity : settings.vSensitivity;
-      
-      // Skip debouncing for control type changes to make them immediate
-      updateControls({ 
-        active_control: controlType,
-        [controlType]: sensitivityValue
-      }).catch(err => console.error('Failed to set control:', err));
-    }
-  }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
+  // Add this effect to directly track hardware values
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    const fetchDirectHardwareValues = async () => {
+      try {
+        const response = await fetch('http://raspberrypi.local:5000/api/sensitivity');
+        if (response.ok) {
+          const data = await response.json();
+          setHardwareValues({
+            a: data.a_sensitivity || 0,
+            v: data.v_sensitivity || 0
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching direct sensitivity values:', err);
+      }
+    };
+    
+    fetchDirectHardwareValues();
+    const interval = setInterval(fetchDirectHardwareValues, 100);
+    
+    return () => clearInterval(interval);
+  }, [encoderConnected]);
 
-  // Replace the existing useEffect with this
+
+  // Effect to update hardware encoder active control based on selected setting
   useEffect(() => {
     if (encoderConnected && selectedSetting) {
       // Determine which sensitivity is active
@@ -121,24 +141,26 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
     }
   }, [encoderConnected, selectedSetting, settings.aSensitivity, settings.vSensitivity]);
 
-
   // Check if sensitivities are disabled
   const isASensitivityDisabled = settings.aSensitivity === 0;
   const isVSensitivityDisabled = settings.vSensitivity === 0;
 
   return (
     <div className="bg-white rounded-xl">
-      <div className="flex justify-between items-center border-b p-2">
+      <div className="flex justify-between items-center border-b p-4">
         <h2 className="text-lg font-semibold">DDD Settings</h2>
       </div>
       
       <div className="p-3 space-y-4">
         {/* A Sensitivity */}
-        <div className={`transition-all ${selectedSetting === 'aSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
+        <div className={`transition-all ${selectedSetting === 'aSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'} ${isASensitivityDisabled ? 'opacity-40' : ''}`}>
           <div className="flex justify-between items-center mb-1">
-            <span className={`text-sm ${selectedSetting === 'aSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
+            <span className={`text-sm ${selectedSetting === 'aSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-600'}`}>
               {selectedSetting === 'aSensitivity' && "➤ "}A Sensitivity
             </span>
+            <div className="text-xs text-gray-600 mt-1">
+              Hardware value: {hardwareValues.a.toFixed(1)} mV
+            </div>
             <span className="text-sm font-medium">
               {settings.aSensitivity === 0 ? "ASYNC" : `${settings.aSensitivity.toFixed(1)} mV`}
             </span>
@@ -163,18 +185,24 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
               disabled={isLocked || selectedSetting !== 'aSensitivity'} 
             />
           </div>
-          <div className="flex justify-between mt-1 text-xs text-gray-500">
+          <div className="flex justify-between mt-1 text-xs text-gray-600">
             <span>10 mV</span>
             <span>0.4 mV</span>
           </div>
+          {isASensitivityDisabled && (
+            <p className="text-xs text-gray-600 mt-1">Adjust value to reactivate</p>
+          )}
         </div>
 
         {/* V Sensitivity */}
-        <div className={`transition-all ${selectedSetting === 'vSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'}`}>
+        <div className={`transition-all ${selectedSetting === 'vSensitivity' ? 'bg-blue-50 p-2 rounded' : 'opacity-50'} ${isVSensitivityDisabled ? 'opacity-40' : ''}`}>
           <div className="flex justify-between items-center mb-1">
-            <span className={`text-sm ${selectedSetting === 'vSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
+            <span className={`text-sm ${selectedSetting === 'vSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-600'}`}>
               {selectedSetting === 'vSensitivity' && "➤ "}V Sensitivity
             </span>
+            <div className="text-xs text-gray-600 mt-1">
+              Hardware value: {hardwareValues.v.toFixed(1)} mV
+            </div>
             <span className="text-sm font-medium">
               {settings.vSensitivity === 0 ? "ASYNC" : `${settings.vSensitivity.toFixed(1)} mV`}
             </span>
@@ -203,10 +231,13 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
             <span>20 mV</span>
             <span>0.8 mV</span>
           </div>
+          {isVSensitivityDisabled && (
+            <p className="text-xs text-gray-600 mt-1">Adjust value to reactivate</p>
+          )}
         </div>
         
         {/* Simple instructions */}
-        <div className="text-xs text-center text-gray-500 mt-2">
+        <div className="text-xs text-center text-gray-600 mt-2">
           Use ↑/↓ to navigate
         </div>
         
