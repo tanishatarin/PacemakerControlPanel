@@ -506,6 +506,8 @@ export const updateSensitivityControlDebounced = debounce(
 // =----------- new attempt monday april 28 1pm ========
 
 
+// This version prevents multiple button events from triggering at once
+
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
@@ -513,12 +515,13 @@ export const startEncoderPolling = (
   ignoreUpdateSources: string[] = []
 ) => {
   let isPolling = true;
-  let lastValues = {
-    rate: 0,
-    a_output: 0,
-    v_output: 0,
-    a_sensitivity: 0,
-    v_sensitivity: 0
+  
+  // Button state trackers to prevent duplicate events
+  let lastButtonStates = {
+    up: false,
+    down: false,
+    left: false,
+    emergency: false
   };
   
   const pollHealth = async () => {
@@ -528,74 +531,58 @@ export const startEncoderPolling = (
       const status = await checkEncoderStatus();
       
       if (status) {
-        // Only update status data if there are changes
-        let hasChanges = false;
-        
-        // Extract control values and check for changes
-        const controlData: EncoderControlData = {};
-        
-        if (status.rate !== undefined && Math.abs((status.rate || 0) - lastValues.rate) > 0.5) {
-          controlData.rate = status.rate;
-          lastValues.rate = status.rate || 0;
-          hasChanges = true;
-        }
-        
-        if (status.a_output !== undefined && Math.abs((status.a_output || 0) - lastValues.a_output) > 0.1) {
-          controlData.a_output = status.a_output;
-          lastValues.a_output = status.a_output || 0;
-          hasChanges = true;
-        }
-        
-        if (status.v_output !== undefined && Math.abs((status.v_output || 0) - lastValues.v_output) > 0.1) {
-          controlData.v_output = status.v_output;
-          lastValues.v_output = status.v_output || 0;
-          hasChanges = true;
-        }
-        
-        if (status.a_sensitivity !== undefined && Math.abs((status.a_sensitivity || 0) - lastValues.a_sensitivity) > 0.05) {
-          controlData.a_sensitivity = status.a_sensitivity;
-          lastValues.a_sensitivity = status.a_sensitivity || 0;
-          hasChanges = true;
-        }
-        
-        if (status.v_sensitivity !== undefined && Math.abs((status.v_sensitivity || 0) - lastValues.v_sensitivity) > 0.05) {
-          controlData.v_sensitivity = status.v_sensitivity;
-          lastValues.v_sensitivity = status.v_sensitivity || 0;
-          hasChanges = true;
-        }
-        
-        // Always include these fields as they're important for state management
-        controlData.locked = status.locked;
-        controlData.mode = status.mode;
-        
-        // Only update if we have significant changes or critical state values
-        if (hasChanges || status.locked !== undefined || status.mode !== undefined) {
-          onDataUpdate(controlData);
-        }
-        
-        // Always update status for button press detection
+        // Update status data
         onStatusUpdate(status);
         
-        // Check for button presses and dispatch events
+        // Extract control values and pass to data update handler
+        const controlData: EncoderControlData = {
+          rate: status.rate,
+          a_output: status.a_output,
+          v_output: status.v_output,
+          locked: status.locked,
+          mode: status.mode,
+          a_sensitivity: status.a_sensitivity,
+          v_sensitivity: status.v_sensitivity
+        };
+        
+        onDataUpdate(controlData);
+        
+        // Check for button presses - with guard against duplicate events
         if (status.buttons) {
-          // Handle up button press
-          if (status.buttons.up_pressed) {
+          // Handle up button press - only trigger once per press
+          if (status.buttons.up_pressed && !lastButtonStates.up) {
+            console.log("Detected UP button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-up-button-pressed'));
+            lastButtonStates.up = true;
+          } else if (!status.buttons.up_pressed && lastButtonStates.up) {
+            lastButtonStates.up = false; // Reset the state tracking
           }
           
-          // Handle down button press
-          if (status.buttons.down_pressed) {
+          // Handle down button press - only trigger once per press
+          if (status.buttons.down_pressed && !lastButtonStates.down) {
+            console.log("Detected DOWN button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-down-button-pressed'));
+            lastButtonStates.down = true;
+          } else if (!status.buttons.down_pressed && lastButtonStates.down) {
+            lastButtonStates.down = false; // Reset the state tracking
           }
           
-          // Handle left button press
-          if (status.buttons.left_pressed) {
+          // Handle left button press - only trigger once per press
+          if (status.buttons.left_pressed && !lastButtonStates.left) {
+            console.log("Detected LEFT button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-left-button-pressed'));
+            lastButtonStates.left = true;
+          } else if (!status.buttons.left_pressed && lastButtonStates.left) {
+            lastButtonStates.left = false; // Reset the state tracking
           }
           
-          // Handle emergency button press
-          if (status.buttons.emergency_pressed) {
+          // Handle emergency button press - only trigger once per press
+          if (status.buttons.emergency_pressed && !lastButtonStates.emergency) {
+            console.log("Detected EMERGENCY button press from hardware");
             window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
+            lastButtonStates.emergency = true;
+          } else if (!status.buttons.emergency_pressed && lastButtonStates.emergency) {
+            lastButtonStates.emergency = false; // Reset the state tracking
           }
         }
       }

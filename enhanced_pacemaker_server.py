@@ -69,6 +69,7 @@ emergency_button_pressed = False
 last_emergency_press_time = 0
 last_mode_encoder_activity = time.time()
 encoder_activity_flag = False
+button_cooldown = 0.5
 
 # Current state to be shared with WebSocket clients
 current_state = {
@@ -85,64 +86,67 @@ current_state = {
     "lastUpdate": time.time()
 }
 
-# Updated button handler functions with immediate state broadcast
+
 def handle_down_button():
     global last_down_press_time, down_button_pressed, current_state
     current_time = time.time()
     
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_down_press_time > 0.3:
+    # Strict debounce logic with longer cooldown
+    if current_time - last_down_press_time > button_cooldown:
         last_down_press_time = current_time
         down_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Down button pressed")
         
-        # Immediately broadcast the state to ensure button press is detected
-        broadcast_state()
+        # Only broadcast after sufficient time has passed since last press
+        broadcast_state()  # Send a single update
 
 
 def handle_up_button():
     global last_up_press_time, up_button_pressed, current_state
     current_time = time.time()
     
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_up_press_time > 0.3:
+    # Strict debounce logic with longer cooldown
+    if current_time - last_up_press_time > button_cooldown:
         last_up_press_time = current_time
         up_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Up button pressed")
         
-        # Immediately broadcast the state to ensure button press is detected
-        broadcast_state()
+        # Only broadcast after sufficient time has passed since last press
+        broadcast_state()  # Send a single update
         
         
 def handle_left_button():
     global last_left_press_time, left_button_pressed, current_state
     current_time = time.time()
     
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_left_press_time > 0.3:
+    # Strict debounce logic with longer cooldown
+    if current_time - last_left_press_time > button_cooldown:
         last_left_press_time = current_time
         left_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Left button pressed")
         
-        # Immediately broadcast the state to ensure button press is detected
-        broadcast_state()
+        # Only broadcast after sufficient time has passed since last press
+        broadcast_state()  # Send a single update
 
 def handle_emergency_button():
     global last_emergency_press_time, emergency_button_pressed, current_state
     current_time = time.time()
     
-    # Debounce logic - only register a press if it's been at least 300ms since the last one
-    if current_time - last_emergency_press_time > 0.3:
+    # Strict debounce logic with longer cooldown
+    if current_time - last_emergency_press_time > button_cooldown:
         last_emergency_press_time = current_time
         emergency_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Emergency button pressed")
         
-        # Immediately broadcast the state to ensure button press is detected
-        broadcast_state()
+        # Only broadcast after sufficient time has passed since last press
+        broadcast_state()  # Send a single update
+
+        
+
 
 
 # # Copy all the handler functions and other code from your original pacemaker_server.py
@@ -307,11 +311,13 @@ def update_a_output():
         
         print(f"A. Output updated: {current_a_output} mA (step size: {step_size}, diff: {diff})")
 
-# Function to update the current V. Output value
+# Replace your current V output handler function with this improved version
+# This should fix the V output encoder responsiveness
+
 def update_v_output():
     global current_v_output, last_v_output_steps, current_state
     
-    # Skip updating if locked, but allow in DOO mode
+    # Skip updating if locked
     if is_locked:
         return
     
@@ -346,7 +352,12 @@ def update_v_output():
         current_state["v_output"] = current_v_output
         current_state["lastUpdate"] = time.time()
         
+        # Log the update
         print(f"V. Output updated: {current_v_output} mA (step size: {step_size}, diff: {diff})")
+        
+        # Important: Broadcast state immediately when V Output changes
+        broadcast_state()
+
 
 # def update_mode_output():
 #     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag, current_state
@@ -1356,31 +1367,13 @@ def set_mode():
     
 #     return jsonify(status_data)
 
-# health check endpoint
+# This version prevents false button detections
 @app.route('/api/health', methods=['GET'])
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
     
-    # Directly read button states for maximum responsiveness
-    up_button_reading = False
-    down_button_reading = False
-    left_button_reading = False 
-    emergency_button_reading = False
-    
-    # Try to directly read hardware buttons if possible
-    try:
-        up_button_reading = not up_button.is_pressed  # Assuming active LOW
-        down_button_reading = not down_button.is_pressed
-        left_button_reading = not left_button.is_pressed
-        emergency_button_reading = not emergency_button.is_pressed
-    except:
-        # If direct hardware reading fails, use the flags
-        up_button_reading = up_button_pressed
-        down_button_reading = down_button_pressed
-        left_button_reading = left_button_pressed
-        emergency_button_reading = emergency_button_pressed
-    
-    # Create response data
+    # Create response data - make a copy of the current button states
+    # IMPORTANT: We're only using the flag variables, not trying to read hardware directly
     status_data = {
         'status': 'ok',
         'rate': current_rate,
@@ -1393,20 +1386,14 @@ def health_check():
         'active_control': active_control,
         'encoder_active': encoder_activity_flag,
         'buttons': {
-            'up_pressed': up_button_pressed or up_button_reading,
-            'down_pressed': down_button_pressed or down_button_reading,
-            'left_pressed': left_button_pressed or left_button_reading,
-            'emergency_pressed': emergency_button_pressed or emergency_button_reading
+            'up_pressed': up_button_pressed,
+            'down_pressed': down_button_pressed,
+            'left_pressed': left_button_pressed,
+            'emergency_pressed': emergency_button_pressed
         }
     }
     
-    # Store current states before resetting
-    was_up_pressed = up_button_pressed
-    was_down_pressed = down_button_pressed
-    was_left_pressed = left_button_pressed
-    was_emergency_pressed = emergency_button_pressed
-    
-    # Reset flags only if they were true
+    # Only reset flags for buttons that were actually pressed
     if up_button_pressed:
         up_button_pressed = False
         print("Reset up button flag")
@@ -1422,7 +1409,7 @@ def health_check():
     if emergency_button_pressed:
         emergency_button_pressed = False
         print("Reset emergency button flag")
-        
+    
     encoder_activity_flag = False
     
     return jsonify(status_data)
