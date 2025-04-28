@@ -146,92 +146,69 @@ def handle_emergency_button():
         broadcast_state()  # Send a single update
 
         
-
-
-
-# # Copy all the handler functions and other code from your original pacemaker_server.py
-# def handle_down_button():
-#     global last_down_press_time, down_button_pressed, current_state
-#     current_time = time.time()
-    
-#     # Debounce logic - only register a press if it's been at least 300ms since the last one
-#     if current_time - last_down_press_time > 0.3:
-#         last_down_press_time = current_time
-#         down_button_pressed = True
-#         current_state["lastUpdate"] = time.time()
-#         print("Down button pressed")
-
-
-# def handle_up_button():
-#     global last_up_press_time, up_button_pressed, current_state
-#     current_time = time.time()
-    
-#     # Debounce logic - only register a press if it's been at least 300ms since the last one
-#     if current_time - last_up_press_time > 0.3:
-#         last_up_press_time = current_time
-#         up_button_pressed = True
-#         current_state["lastUpdate"] = time.time()
-#         print("Up button pressed")
-        
-        
-# def handle_left_button():
-#     global last_left_press_time, left_button_pressed, current_state
-#     current_time = time.time()
-    
-#     # Debounce logic - only register a press if it's been at least 300ms since the last one
-#     if current_time - last_left_press_time > 0.3:
-#         last_left_press_time = current_time
-#         left_button_pressed = True
-#         current_state["lastUpdate"] = time.time()
-#         print("Left button pressed")
-
-# def handle_emergency_button():
-#     global last_emergency_press_time, emergency_button_pressed, current_state
-#     current_time = time.time()
-    
-#     # Debounce logic - only register a press if it's been at least 300ms since the last one
-#     if current_time - last_emergency_press_time > 0.3:
-#         last_emergency_press_time = current_time
-#         emergency_button_pressed = True
-#         current_state["lastUpdate"] = time.time()
-#         print("Emergency button pressed")
-
 # Function to update the current rate value
+# def update_rate():
+#     global current_rate, current_state
+
+#     if is_locked:
+#         return
+
+#     # Get current steps
+#     current_steps = rate_encoder.steps
+
+#     # Initialize tracking
+#     if not hasattr(update_rate, 'last_steps'):
+#         update_rate.last_steps = current_steps
+#         return
+
+#     # Compute delta
+#     step_diff = current_steps - update_rate.last_steps
+
+#     # Sanity check: encoder reports a weird jump?
+#     if abs(step_diff) > 10:
+#         print(f"[Rate Encoder] Ignoring jump: {step_diff} steps")
+#         update_rate.last_steps = current_steps
+#         return
+
+#     if step_diff != 0:
+#         new_rate = current_rate + step_diff
+#         new_rate = max(min_rate, min(new_rate, max_rate))
+#         current_rate = new_rate
+
+#         # Update state
+#         current_state["rate"] = current_rate
+#         current_state["lastUpdate"] = time.time()
+
+#         print(f"Rate updated: {current_rate} (Δ {step_diff})")
+
+#     update_rate.last_steps = current_steps
+
+
+# Function to update the current rate value - simplified approach
 def update_rate():
     global current_rate, current_state
 
     if is_locked:
         return
 
-    # Get current steps
-    current_steps = rate_encoder.steps
-
-    # Initialize tracking
-    if not hasattr(update_rate, 'last_steps'):
-        update_rate.last_steps = current_steps
-        return
-
-    # Compute delta
-    step_diff = current_steps - update_rate.last_steps
-
-    # Sanity check: encoder reports a weird jump?
-    if abs(step_diff) > 10:
-        print(f"[Rate Encoder] Ignoring jump: {step_diff} steps")
-        update_rate.last_steps = current_steps
-        return
-
-    if step_diff != 0:
-        new_rate = current_rate + step_diff
-        new_rate = max(min_rate, min(new_rate, max_rate))
-        current_rate = new_rate
-
+    # Get current encoder position
+    encoder_position = rate_encoder.steps
+    
+    # Ensure the position is within valid range
+    encoder_position = max(min_rate, min(encoder_position, max_rate))
+    
+    # Only update if there's an actual change
+    if encoder_position != current_rate:
+        current_rate = encoder_position
+        
+        # Make sure encoder position reflects our value
+        rate_encoder.steps = current_rate
+        
         # Update state
         current_state["rate"] = current_rate
         current_state["lastUpdate"] = time.time()
-
-        print(f"Rate updated: {current_rate} (Δ {step_diff})")
-
-    update_rate.last_steps = current_steps
+        
+        print(f"Rate updated: {current_rate} ppm")
 
 
 # Function to determine the appropriate step size based on the current value
