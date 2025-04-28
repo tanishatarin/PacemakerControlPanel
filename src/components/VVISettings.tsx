@@ -108,18 +108,18 @@ const VVISettings: React.FC<VVISettingsProps> = ({
                 disabled={isLocked}
               />
             </div>
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <div className="flex justify-between mt-1 text-xs text-gray-600">
               <span>20 mV</span>
               <span>0.8 mV</span>
             </div>
             {isVSensitivityDisabled && (
-              <p className="text-xs text-gray-500 mt-1">Adjust value to reactivate</p>
+              <p className="text-xs text-gray-600 mt-1">Adjust value to reactivate</p>
             )}
           </div>
 
           <div className="mt-4 pt-2 border-t border-gray-100">
             <p className="text-sm text-gray-600">VVI Mode (Ventricular Inhibited)</p>
-            <p className="text-xs text-gray-500 mt-1">Paces the ventricle when no natural ventricular activity is detected. Commonly used for atrial fibrillation or other atrial arrhythmias.</p>
+            <p className="text-xs text-gray-600 mt-1">Paces the ventricle when no natural ventricular activity is detected. Commonly used for atrial fibrillation or other atrial arrhythmias.</p>
           </div>
           
           {encoderConnected && (
