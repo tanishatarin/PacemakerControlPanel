@@ -403,7 +403,109 @@ export const updateSensitivityControlDebounced = debounce(
 // };
 
 
-// In encoderApi.ts - Modify the startEncoderPolling function
+
+
+////// ------------ this one below lowk good but our buttons stopped working but sensitivity works now? -------
+
+// // In encoderApi.ts - Modify the startEncoderPolling function
+// export const startEncoderPolling = (
+//   onDataUpdate: (data: EncoderControlData) => void,
+//   onStatusUpdate: (status: ApiStatus) => void,
+//   pollInterval = 100,
+//   ignoreUpdateSources: string[] = []
+// ) => {
+//   let isPolling = true;
+//   let lastValues = {
+//     rate: 0,
+//     a_output: 0,
+//     v_output: 0,
+//     a_sensitivity: 0,
+//     v_sensitivity: 0
+//   };
+  
+//   const pollHealth = async () => {
+//     if (!isPolling) return;
+    
+//     try {
+//       const status = await checkEncoderStatus();
+      
+//       if (status) {
+//         // Only update status data if there are changes
+//         let hasChanges = false;
+        
+//         // Extract control values and check for changes
+//         const controlData: EncoderControlData = {};
+        
+//         if (status.rate !== undefined && Math.abs((status.rate || 0) - lastValues.rate) > 0.5) {
+//           controlData.rate = status.rate;
+//           lastValues.rate = status.rate || 0;
+//           hasChanges = true;
+//         }
+        
+//         if (status.a_output !== undefined && Math.abs((status.a_output || 0) - lastValues.a_output) > 0.1) {
+//           controlData.a_output = status.a_output;
+//           lastValues.a_output = status.a_output || 0;
+//           hasChanges = true;
+//         }
+        
+//         if (status.v_output !== undefined && Math.abs((status.v_output || 0) - lastValues.v_output) > 0.1) {
+//           controlData.v_output = status.v_output;
+//           lastValues.v_output = status.v_output || 0;
+//           hasChanges = true;
+//         }
+        
+//         if (status.a_sensitivity !== undefined && Math.abs((status.a_sensitivity || 0) - lastValues.a_sensitivity) > 0.05) {
+//           controlData.a_sensitivity = status.a_sensitivity;
+//           lastValues.a_sensitivity = status.a_sensitivity || 0;
+//           hasChanges = true;
+//         }
+        
+//         if (status.v_sensitivity !== undefined && Math.abs((status.v_sensitivity || 0) - lastValues.v_sensitivity) > 0.05) {
+//           controlData.v_sensitivity = status.v_sensitivity;
+//           lastValues.v_sensitivity = status.v_sensitivity || 0;
+//           hasChanges = true;
+//         }
+        
+//         // Always include these fields as they're important for state management
+//         controlData.locked = status.locked;
+//         controlData.mode = status.mode;
+        
+//         // Only update if we have significant changes or critical state values
+//         if (hasChanges || status.locked !== undefined || status.mode !== undefined) {
+//           onDataUpdate(controlData);
+//         }
+        
+//         // Always update status for button press detection
+//         onStatusUpdate(status);
+        
+//         // Check for button presses (unchanged)
+//         if (status.buttons) {
+//           // Button press handling (unchanged)
+//         }
+//       }
+//     } catch (error) {
+//       console.error('Polling error:', error);
+//     } finally {
+//       if (isPolling) {
+//         setTimeout(pollHealth, pollInterval);
+//       }
+//     }
+//   };
+  
+//   // Start initial poll
+//   pollHealth();
+  
+//   // Return a function to stop polling
+//   return () => {
+//     isPolling = false;
+//   };
+// };
+
+
+
+// =----------- new attempt monday april 28 1pm ========
+
+
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
@@ -474,9 +576,27 @@ export const startEncoderPolling = (
         // Always update status for button press detection
         onStatusUpdate(status);
         
-        // Check for button presses (unchanged)
+        // Check for button presses and dispatch events
         if (status.buttons) {
-          // Button press handling (unchanged)
+          // Handle up button press
+          if (status.buttons.up_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-up-button-pressed'));
+          }
+          
+          // Handle down button press
+          if (status.buttons.down_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-down-button-pressed'));
+          }
+          
+          // Handle left button press
+          if (status.buttons.left_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-left-button-pressed'));
+          }
+          
+          // Handle emergency button press
+          if (status.buttons.emergency_pressed) {
+            window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
+          }
         }
       }
     } catch (error) {

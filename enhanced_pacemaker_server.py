@@ -85,8 +85,7 @@ current_state = {
     "lastUpdate": time.time()
 }
 
-
-# Copy all the handler functions and other code from your original pacemaker_server.py
+# Updated button handler functions with immediate state broadcast
 def handle_down_button():
     global last_down_press_time, down_button_pressed, current_state
     current_time = time.time()
@@ -97,6 +96,9 @@ def handle_down_button():
         down_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Down button pressed")
+        
+        # Immediately broadcast the state to ensure button press is detected
+        broadcast_state()
 
 
 def handle_up_button():
@@ -110,6 +112,9 @@ def handle_up_button():
         current_state["lastUpdate"] = time.time()
         print("Up button pressed")
         
+        # Immediately broadcast the state to ensure button press is detected
+        broadcast_state()
+        
         
 def handle_left_button():
     global last_left_press_time, left_button_pressed, current_state
@@ -121,6 +126,9 @@ def handle_left_button():
         left_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Left button pressed")
+        
+        # Immediately broadcast the state to ensure button press is detected
+        broadcast_state()
 
 def handle_emergency_button():
     global last_emergency_press_time, emergency_button_pressed, current_state
@@ -132,6 +140,57 @@ def handle_emergency_button():
         emergency_button_pressed = True
         current_state["lastUpdate"] = time.time()
         print("Emergency button pressed")
+        
+        # Immediately broadcast the state to ensure button press is detected
+        broadcast_state()
+
+
+# # Copy all the handler functions and other code from your original pacemaker_server.py
+# def handle_down_button():
+#     global last_down_press_time, down_button_pressed, current_state
+#     current_time = time.time()
+    
+#     # Debounce logic - only register a press if it's been at least 300ms since the last one
+#     if current_time - last_down_press_time > 0.3:
+#         last_down_press_time = current_time
+#         down_button_pressed = True
+#         current_state["lastUpdate"] = time.time()
+#         print("Down button pressed")
+
+
+# def handle_up_button():
+#     global last_up_press_time, up_button_pressed, current_state
+#     current_time = time.time()
+    
+#     # Debounce logic - only register a press if it's been at least 300ms since the last one
+#     if current_time - last_up_press_time > 0.3:
+#         last_up_press_time = current_time
+#         up_button_pressed = True
+#         current_state["lastUpdate"] = time.time()
+#         print("Up button pressed")
+        
+        
+# def handle_left_button():
+#     global last_left_press_time, left_button_pressed, current_state
+#     current_time = time.time()
+    
+#     # Debounce logic - only register a press if it's been at least 300ms since the last one
+#     if current_time - last_left_press_time > 0.3:
+#         last_left_press_time = current_time
+#         left_button_pressed = True
+#         current_state["lastUpdate"] = time.time()
+#         print("Left button pressed")
+
+# def handle_emergency_button():
+#     global last_emergency_press_time, emergency_button_pressed, current_state
+#     current_time = time.time()
+    
+#     # Debounce logic - only register a press if it's been at least 300ms since the last one
+#     if current_time - last_emergency_press_time > 0.3:
+#         last_emergency_press_time = current_time
+#         emergency_button_pressed = True
+#         current_state["lastUpdate"] = time.time()
+#         print("Emergency button pressed")
 
 # Function to update the current rate value
 def update_rate():
@@ -1206,17 +1265,7 @@ def set_sensitivity():
     else:
         return jsonify({'error': 'No valid parameters provided'}), 400
     
-# # Add a new API endpoint for emergency reset
-# @app.route('/api/reset_encoder', methods=['POST'])
-# def api_reset_encoder():
-#     encoder_type = request.json.get('type', 'mode')
-    
-#     if encoder_type == 'mode':
-#         hardware_reset_mode_encoder()
-#         return jsonify({'success': True, 'message': 'Mode encoder reset successful'})
-#     else:
-#         return jsonify({'error': 'Unknown encoder type'}), 400
-     
+# API endpoint for emergency reset
 @app.route('/api/reset_encoder', methods=['POST'])
 def api_reset_encoder():
     encoder_type = request.json.get('type', 'mode')
@@ -1269,10 +1318,67 @@ def set_mode():
             return jsonify({'error': 'Invalid mode value'}), 400
     return jsonify({'error': 'No mode provided'}), 400
 
+# # health check endpoint
+# @app.route('/api/health', methods=['GET'])
+# def health_check():
+#     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
+    
+#     # Create response data
+#     status_data = {
+#         'status': 'ok',
+#         'rate': current_rate,
+#         'a_output': current_a_output,
+#         'v_output': current_v_output,
+#         'locked': is_locked,
+#         'mode': current_mode,
+#         'a_sensitivity': a_sensitivity,
+#         'v_sensitivity': v_sensitivity,
+#         'active_control': active_control,
+#         'encoder_active': encoder_activity_flag,
+#         'buttons': {
+#             'up_pressed': up_button_pressed,
+#             'down_pressed': down_button_pressed,
+#             'left_pressed': left_button_pressed,
+#             'emergency_pressed': emergency_button_pressed
+#         }
+#     }
+    
+#     # Reset flags
+#     was_up_pressed = up_button_pressed
+#     was_down_pressed = down_button_pressed
+#     was_left_pressed = left_button_pressed
+#     was_emergency_pressed = emergency_button_pressed
+#     up_button_pressed = False
+#     down_button_pressed = False
+#     left_button_pressed = False
+#     emergency_button_pressed = False
+#     encoder_activity_flag = False
+    
+#     return jsonify(status_data)
+
 # health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
+    
+    # Directly read button states for maximum responsiveness
+    up_button_reading = False
+    down_button_reading = False
+    left_button_reading = False 
+    emergency_button_reading = False
+    
+    # Try to directly read hardware buttons if possible
+    try:
+        up_button_reading = not up_button.is_pressed  # Assuming active LOW
+        down_button_reading = not down_button.is_pressed
+        left_button_reading = not left_button.is_pressed
+        emergency_button_reading = not emergency_button.is_pressed
+    except:
+        # If direct hardware reading fails, use the flags
+        up_button_reading = up_button_pressed
+        down_button_reading = down_button_pressed
+        left_button_reading = left_button_pressed
+        emergency_button_reading = emergency_button_pressed
     
     # Create response data
     status_data = {
@@ -1287,25 +1393,40 @@ def health_check():
         'active_control': active_control,
         'encoder_active': encoder_activity_flag,
         'buttons': {
-            'up_pressed': up_button_pressed,
-            'down_pressed': down_button_pressed,
-            'left_pressed': left_button_pressed,
-            'emergency_pressed': emergency_button_pressed
+            'up_pressed': up_button_pressed or up_button_reading,
+            'down_pressed': down_button_pressed or down_button_reading,
+            'left_pressed': left_button_pressed or left_button_reading,
+            'emergency_pressed': emergency_button_pressed or emergency_button_reading
         }
     }
     
-    # Reset flags
+    # Store current states before resetting
     was_up_pressed = up_button_pressed
     was_down_pressed = down_button_pressed
     was_left_pressed = left_button_pressed
     was_emergency_pressed = emergency_button_pressed
-    up_button_pressed = False
-    down_button_pressed = False
-    left_button_pressed = False
-    emergency_button_pressed = False
+    
+    # Reset flags only if they were true
+    if up_button_pressed:
+        up_button_pressed = False
+        print("Reset up button flag")
+    
+    if down_button_pressed:
+        down_button_pressed = False
+        print("Reset down button flag")
+    
+    if left_button_pressed:
+        left_button_pressed = False
+        print("Reset left button flag")
+    
+    if emergency_button_pressed:
+        emergency_button_pressed = False
+        print("Reset emergency button flag")
+        
     encoder_activity_flag = False
     
     return jsonify(status_data)
+
 
 # API endpoint to get hardware information
 @app.route('/api/hardware', methods=['GET'])
