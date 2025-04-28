@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Key } from 'lucide-react';
 import { BatteryHeader } from './BatteryHeader';
 // import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
@@ -34,7 +33,6 @@ const ControlPanel: React.FC = () => {
   
   // System states
   const [isLocked, setIsLocked] = useState(false);
-  const [batteryLevel, setBatteryLevel] = useState(100);
   const [autoLockTimer, setAutoLockTimer] = useState<NodeJS.Timeout | null>(null);
   
   // Notification states
@@ -100,6 +98,52 @@ const ControlPanel: React.FC = () => {
     setAutoLockTimer(newTimer as unknown as NodeJS.Timeout);
   }, [autoLockTimer, encoderConnected]);
 
+  // Function to reset all values to initial state
+  const handleReset = useCallback(() => {
+    // Reset core values
+    setRate(80);
+    setAOutput(10.0);
+    setVOutput(10.0);
+    
+    // Reset DDD settings
+    setDddSettings({
+      aSensitivity: 0.5,
+      vSensitivity: 2.0,
+      avDelay: 170,
+      upperRate: 110,
+      pvarp: 300,
+      aTracking: true,
+      settings: "Automatic"
+    });
+    
+    // Reset VVI sensitivity
+    setVviSensitivity(2.0);
+    
+    // Reset to VOO mode (index 0)
+    setPendingModeIndex(0);
+    setSelectedModeIndex(0);
+    
+    // Close any open setting panels
+    setShowDDDSettings(false);
+    setShowVVISettings(false);
+    setShowDOOSettings(false);
+    
+    // If connected to hardware, update hardware values
+    if (encoderConnected) {
+      updateControls({
+        rate: 80,
+        a_output: 10.0,
+        v_output: 10.0,
+        a_sensitivity: 0.5,
+        v_sensitivity: 2.0,
+        mode: 0,
+        active_control: 'none'
+      }).catch(err => console.error('Failed to reset hardware values:', err));
+    }
+    
+    console.log("All values reset to initial state");
+  }, [encoderConnected]);
+
   // Handle mode navigation - memoized with useCallback
   const handleModeNavigation = useCallback((direction: 'up' | 'down') => {
     resetAutoLockTimer();
@@ -153,75 +197,6 @@ const ControlPanel: React.FC = () => {
     setPendingModeIndex(newIndex);
     
   }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
-
-  // // Memoize the handleLeftArrowPress function
-  // const handleLeftArrowPress = useCallback(() => {
-  //   resetAutoLockTimer();
-    
-  //   // If we're in DOO settings, do not allow exiting via left arrow
-  //   if (showDOOSettings) {
-  //     return;
-  //   }
-    
-  //   // If we're in other settings screens, go back to the mode selection
-  //   if (showDDDSettings || showVVISettings) {
-  //     if (encoderConnected) {
-  //       updateControls({ active_control: 'none' })
-  //         .catch(err => console.error('Failed to reset active control:', err));
-  //     }
-  //     setShowDDDSettings(false);
-  //     setShowVVISettings(false);
-  //     return;
-  //   }
-    
-  //   if (isLocked) {
-  //     handleLockError();
-  //     return;
-  //   }
-    
-  //   // Prevent setting mode to DOO via left arrow
-  //   if (modes[pendingModeIndex] === 'DOO') {
-  //     return;
-  //   }
-    
-  //   // Otherwise, apply the selected mode and show appropriate settings
-  //   setSelectedModeIndex(pendingModeIndex);
-  //   const newMode = modes[pendingModeIndex];
-    
-  //   // Check if mode requires special settings screen
-  //   if (newMode === 'DDD') {
-  //     setShowDDDSettings(true);
-
-  //     // Set the active control to A Sensitivity by default when entering DDD settings
-  //     if (encoderConnected) {
-  //       updateControls({
-  //         active_control: 'a_sensitivity',
-  //         a_sensitivity: dddSettings.aSensitivity
-  //       }).catch(err => console.error('Error setting initial active control for DDD:', err));
-  //     }
-
-  //   } else if (newMode === 'VVI') {
-  //     setShowVVISettings(true);
-
-  //     // Set the active control to V Sensitivity when entering VVI settings
-  //     if (encoderConnected) {
-  //       updateControls({
-  //         active_control: 'v_sensitivity',
-  //         v_sensitivity: vviSensitivity
-  //       }).catch(err => console.error('Error setting initial active control for VVI:', err));
-  //     }
-
-  //   }
-    
-  //   // If exiting async message mode
-  //   if (showAsyncMessage) {
-  //     setShowAsyncMessage(false);
-  //   }
-  // }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
-
-
-  // Updated complete handleLeftArrowPress function
-  // Replace this entire function in ControlPanel.tsx
 
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
@@ -1031,31 +1006,14 @@ useEffect(() => {
   // Main control panel UI
   return (
     <div className="max-w-2xl mx-auto p-8 bg-gray-50 min-h-screen">
-     {/* <div className="max-w-2xl mx-auto p-4 bg-gray-50" style={{ minHeight: 'calc(100vh - 2rem)' }}> */}
 
       {/* Battery and Mode Header */}
       <BatteryHeader
-        // batteryLevel={batteryLevel}
         selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
         // selectedMode={modes[selectedModeIndex]}
         isLocked={isLocked}
-        // onBatteryChange={setBatteryLevel}
+        onReset={handleReset}
       />
-
-    {/* <BatteryHeader
-      selectedMode={modes[pendingModeIndex]}
-      isLocked={isLocked}
-    /> */}
-
-    {/* Encoder Connection Status */}
-    {/* {encoderConnected && (
-      <div className="mb-2 p-2 bg-green-100 rounded-lg text-green-800 text-sm">
-        Physical encoder connected and active {hardwareStatus?.hardware?.rate_encoder 
-          ? `- Rotations: ${hardwareStatus.hardware.rate_encoder.rotation_count}` 
-          : ''}
-      </div>
-    )} */}
-
 
       {/* Emergency Mode Button */}
       <button

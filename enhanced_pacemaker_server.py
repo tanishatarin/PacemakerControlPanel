@@ -145,45 +145,6 @@ def handle_emergency_button():
         # Only broadcast after sufficient time has passed since last press
         broadcast_state()  # Send a single update
 
-        
-# Function to update the current rate value
-# def update_rate():
-#     global current_rate, current_state
-
-#     if is_locked:
-#         return
-
-#     # Get current steps
-#     current_steps = rate_encoder.steps
-
-#     # Initialize tracking
-#     if not hasattr(update_rate, 'last_steps'):
-#         update_rate.last_steps = current_steps
-#         return
-
-#     # Compute delta
-#     step_diff = current_steps - update_rate.last_steps
-
-#     # Sanity check: encoder reports a weird jump?
-#     if abs(step_diff) > 10:
-#         print(f"[Rate Encoder] Ignoring jump: {step_diff} steps")
-#         update_rate.last_steps = current_steps
-#         return
-
-#     if step_diff != 0:
-#         new_rate = current_rate + step_diff
-#         new_rate = max(min_rate, min(new_rate, max_rate))
-#         current_rate = new_rate
-
-#         # Update state
-#         current_state["rate"] = current_rate
-#         current_state["lastUpdate"] = time.time()
-
-#         print(f"Rate updated: {current_rate} (Δ {step_diff})")
-
-#     update_rate.last_steps = current_steps
-
-
 # Function to update the current rate value - simplified approach
 def update_rate():
     global current_rate, current_state
@@ -335,55 +296,6 @@ def update_v_output():
         # Important: Broadcast state immediately when V Output changes
         broadcast_state()
 
-
-# def update_mode_output():
-#     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag, current_state
-#     # Add this at the start of update_mode_output
-#     print(f"Mode encoder update called, steps={mode_output_encoder.steps}")
-    
-#     # Skip if locked or no active control
-#     if is_locked or active_control == 'none':
-#         return
-    
-#     # Get current steps
-#     current_steps = mode_output_encoder.steps
-    
-#     # Initialize tracking if needed
-#     if not hasattr(update_mode_output, 'last_steps'):
-#         update_mode_output.last_steps = current_steps
-#         print(f"Initialized mode encoder tracking: steps={current_steps}")
-#         return
-    
-#     # Calculate difference
-#     step_diff = current_steps - update_mode_output.last_steps
-    
-#     # Only process if there's actual movement
-#     if step_diff == 0:
-#         return
-    
-#     # Sanity check: encoder reports a weird jump?
-#     if abs(step_diff) > 10:
-#         print(f"[Mode Encoder] Ignoring jump: {step_diff} steps")
-#         update_mode_output.last_steps = current_steps
-#         return
-    
-#     # Update activity timestamp and set flag
-#     last_mode_encoder_activity = time.time()
-#     encoder_activity_flag = True
-    
-#     # Update tracking immediately to prevent multiple processing
-#     last_steps = update_mode_output.last_steps
-#     update_mode_output.last_steps = current_steps
-    
-#     print(f"Mode encoder movement detected: {step_diff} steps")
-    
-#     # Process based on control type
-#     if active_control == 'a_sensitivity':
-#         # Use step_diff directly instead of comparing again
-#         process_a_sensitivity_change(step_diff)
-#     elif active_control == 'v_sensitivity':
-#         process_v_sensitivity_change(step_diff)
-
 def update_mode_output():
     global a_sensitivity, v_sensitivity, active_control, mode_output_encoder, last_mode_encoder_activity, encoder_activity_flag, current_state
     
@@ -432,48 +344,7 @@ def update_mode_output():
     # Important: Broadcast state change to all WebSocket clients immediately
     broadcast_state()
 
-# Helper functions to make the code cleaner
-# def process_a_sensitivity_change(step_diff):
-#     global a_sensitivity, current_state
-    
-#     # Clockwise - decrease, counter-clockwise - increase
-#     if step_diff > 0:  # Clockwise
-#         if a_sensitivity > min_a_sensitivity:
-#             a_sensitivity = max(min_a_sensitivity, a_sensitivity - 0.1)
-#         elif a_sensitivity == min_a_sensitivity:
-#             a_sensitivity = 0  # ASYNC
-#     else:  # Counter-clockwise
-#         if a_sensitivity == 0:
-#             a_sensitivity = min_a_sensitivity  # Come out of ASYNC
-#         elif a_sensitivity < max_a_sensitivity:
-#             a_sensitivity = min(max_a_sensitivity, a_sensitivity + 0.1)
-            
-#     a_sensitivity = round(a_sensitivity, 1)
-#     current_state["aSensitivity"] = a_sensitivity
-#     current_state["lastUpdate"] = time.time()
-#     print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
 
-# def process_v_sensitivity_change(step_diff):
-#     global v_sensitivity, current_state
-    
-#     # Clockwise - decrease, counter-clockwise - increase
-#     if step_diff > 0:  # Clockwise
-#         if v_sensitivity > min_v_sensitivity:
-#             v_sensitivity = max(min_v_sensitivity, v_sensitivity - 0.2)
-#         elif v_sensitivity == min_v_sensitivity:
-#             v_sensitivity = 0  # ASYNC
-#     else:  # Counter-clockwise
-#         if v_sensitivity == 0:
-#             v_sensitivity = min_v_sensitivity  # Come out of ASYNC
-#         elif v_sensitivity < max_v_sensitivity:
-#             v_sensitivity = min(max_v_sensitivity, v_sensitivity + 0.2)
-            
-#     v_sensitivity = round(v_sensitivity, 1)
-#     current_state["vSensitivity"] = v_sensitivity
-#     current_state["lastUpdate"] = time.time()
-#     print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
-    
-    
 def process_a_sensitivity_change(step_diff):
     global a_sensitivity, current_state
     
@@ -507,6 +378,7 @@ def process_a_sensitivity_change(step_diff):
     current_state["aSensitivity"] = a_sensitivity
     current_state["lastUpdate"] = time.time()
     print(f"A Sensitivity: {a_sensitivity if a_sensitivity > 0 else 'ASYNC'}")
+
 
 def process_v_sensitivity_change(step_diff):
     global v_sensitivity, current_state
@@ -543,8 +415,6 @@ def process_v_sensitivity_change(step_diff):
     print(f"V Sensitivity: {v_sensitivity if v_sensitivity > 0 else 'ASYNC'}")
 
 
-
-
 def hardware_reset_mode_encoder():
     """Force reset of mode encoder state at hardware level"""
     global mode_output_encoder
@@ -558,20 +428,6 @@ def hardware_reset_mode_encoder():
     
     print(f"Hard reset of mode encoder to steps={current_steps}")
 
-# def reset_stuck_encoders():
-#     global mode_output_encoder, last_mode_encoder_activity
-    
-#     current_time = time.time()
-    
-#     # If it's been more than 3 seconds since last activity and there's an active control
-#     if current_time - last_mode_encoder_activity > 3 and active_control != 'none':
-#         # Reset the steps to match the logical state
-#         current_steps = mode_output_encoder.steps
-        
-#         # Only reset if update_mode_output.last_steps exists and differs
-#         if hasattr(update_mode_output, 'last_steps') and update_mode_output.last_steps != current_steps:
-#             print(f"Resetting stuck encoder: {update_mode_output.last_steps} → {current_steps}")
-#             update_mode_output.last_steps = current_steps
 
 def reset_stuck_encoders():
     global mode_output_encoder, last_mode_encoder_activity, active_control
@@ -890,38 +746,6 @@ def apply_control_updates(updates):
     # Update the timestamp
     current_state["lastUpdate"] = time.time()
 
-# def broadcast_state():
-#     """Broadcast the current state to all WebSocket clients"""
-#     global connected_clients, current_state
-    
-#     if not connected_clients:
-#         return
-    
-#     # Create the message
-#     try:
-#         message = json.dumps(current_state)
-#         frame = create_websocket_frame(message)
-        
-#         # Send to all clients
-#         clients_to_remove = []
-#         for client in connected_clients:
-#             try:
-#                 client.sendall(frame)
-#             except:
-#                 clients_to_remove.append(client)
-        
-#         # Remove disconnected clients
-#         for client in clients_to_remove:
-#             if client in connected_clients:
-#                 connected_clients.remove(client)
-#                 try:
-#                     client.close()
-#                 except:
-#                     pass
-#     except Exception as e:
-#         print(f"Error broadcasting state: {e}")
-
-
 def broadcast_state():
     """Broadcast the current state to all WebSocket clients"""
     global connected_clients, current_state
@@ -953,19 +777,6 @@ def broadcast_state():
                     pass
     except Exception as e:
         print(f"Error broadcasting state: {e}")
-
-
-# def periodic_broadcast():
-#     """Periodically broadcast the state to all clients"""
-#     while True:
-#         try:
-#             # Only broadcast if there are clients connected
-#             if connected_clients:
-#                 broadcast_state()
-#         except Exception as e:
-#             print(f"Error in periodic broadcast: {e}")
-#         time.sleep(0.1)  # Broadcast 10 times per second
-
 
 def periodic_broadcast():
     """Periodically broadcast the state to all clients"""
@@ -1305,44 +1116,6 @@ def set_mode():
         else:
             return jsonify({'error': 'Invalid mode value'}), 400
     return jsonify({'error': 'No mode provided'}), 400
-
-# # health check endpoint
-# @app.route('/api/health', methods=['GET'])
-# def health_check():
-#     global up_button_pressed, down_button_pressed, left_button_pressed, emergency_button_pressed, encoder_activity_flag
-    
-#     # Create response data
-#     status_data = {
-#         'status': 'ok',
-#         'rate': current_rate,
-#         'a_output': current_a_output,
-#         'v_output': current_v_output,
-#         'locked': is_locked,
-#         'mode': current_mode,
-#         'a_sensitivity': a_sensitivity,
-#         'v_sensitivity': v_sensitivity,
-#         'active_control': active_control,
-#         'encoder_active': encoder_activity_flag,
-#         'buttons': {
-#             'up_pressed': up_button_pressed,
-#             'down_pressed': down_button_pressed,
-#             'left_pressed': left_button_pressed,
-#             'emergency_pressed': emergency_button_pressed
-#         }
-#     }
-    
-#     # Reset flags
-#     was_up_pressed = up_button_pressed
-#     was_down_pressed = down_button_pressed
-#     was_left_pressed = left_button_pressed
-#     was_emergency_pressed = emergency_button_pressed
-#     up_button_pressed = False
-#     down_button_pressed = False
-#     left_button_pressed = False
-#     emergency_button_pressed = False
-#     encoder_activity_flag = False
-    
-#     return jsonify(status_data)
 
 # This version prevents false button detections
 @app.route('/api/health', methods=['GET'])
