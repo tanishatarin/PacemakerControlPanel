@@ -154,7 +154,75 @@ const ControlPanel: React.FC = () => {
     
   }, [isLocked, showDDDSettings, showDOOSettings, selectedDDDSetting, pendingModeIndex, modes.length, handleLockError, resetAutoLockTimer]);
 
-  // Memoize the handleLeftArrowPress function
+  // // Memoize the handleLeftArrowPress function
+  // const handleLeftArrowPress = useCallback(() => {
+  //   resetAutoLockTimer();
+    
+  //   // If we're in DOO settings, do not allow exiting via left arrow
+  //   if (showDOOSettings) {
+  //     return;
+  //   }
+    
+  //   // If we're in other settings screens, go back to the mode selection
+  //   if (showDDDSettings || showVVISettings) {
+  //     if (encoderConnected) {
+  //       updateControls({ active_control: 'none' })
+  //         .catch(err => console.error('Failed to reset active control:', err));
+  //     }
+  //     setShowDDDSettings(false);
+  //     setShowVVISettings(false);
+  //     return;
+  //   }
+    
+  //   if (isLocked) {
+  //     handleLockError();
+  //     return;
+  //   }
+    
+  //   // Prevent setting mode to DOO via left arrow
+  //   if (modes[pendingModeIndex] === 'DOO') {
+  //     return;
+  //   }
+    
+  //   // Otherwise, apply the selected mode and show appropriate settings
+  //   setSelectedModeIndex(pendingModeIndex);
+  //   const newMode = modes[pendingModeIndex];
+    
+  //   // Check if mode requires special settings screen
+  //   if (newMode === 'DDD') {
+  //     setShowDDDSettings(true);
+
+  //     // Set the active control to A Sensitivity by default when entering DDD settings
+  //     if (encoderConnected) {
+  //       updateControls({
+  //         active_control: 'a_sensitivity',
+  //         a_sensitivity: dddSettings.aSensitivity
+  //       }).catch(err => console.error('Error setting initial active control for DDD:', err));
+  //     }
+
+  //   } else if (newMode === 'VVI') {
+  //     setShowVVISettings(true);
+
+  //     // Set the active control to V Sensitivity when entering VVI settings
+  //     if (encoderConnected) {
+  //       updateControls({
+  //         active_control: 'v_sensitivity',
+  //         v_sensitivity: vviSensitivity
+  //       }).catch(err => console.error('Error setting initial active control for VVI:', err));
+  //     }
+
+  //   }
+    
+  //   // If exiting async message mode
+  //   if (showAsyncMessage) {
+  //     setShowAsyncMessage(false);
+  //   }
+  // }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
+
+
+  // Updated complete handleLeftArrowPress function
+  // Replace this entire function in ControlPanel.tsx
+
   const handleLeftArrowPress = useCallback(() => {
     resetAutoLockTimer();
     
@@ -184,9 +252,27 @@ const ControlPanel: React.FC = () => {
       return;
     }
     
-    // Otherwise, apply the selected mode and show appropriate settings
-    setSelectedModeIndex(pendingModeIndex);
-    const newMode = modes[pendingModeIndex];
+    // Update both selected and pending mode indices to the same value
+    const newModeIndex = pendingModeIndex;
+    setSelectedModeIndex(newModeIndex);
+    const newMode = modes[newModeIndex];
+    
+    // Synchronize mode with the hardware
+    if (encoderConnected) {
+      // Flag that we initiated this change to prevent feedback loops
+      lastUpdateRef.current = { source: 'frontend', time: Date.now() };
+      setLocalControlActive(true);
+      
+      // Send the new mode to the hardware
+      updateControls({
+        mode: newModeIndex
+      }).catch(err => console.error('Error updating mode index:', err));
+      
+      // Allow hardware control again after a short delay
+      setTimeout(() => {
+        setLocalControlActive(false);
+      }, 500);
+    }
     
     // Check if mode requires special settings screen
     if (newMode === 'DDD') {
@@ -210,14 +296,14 @@ const ControlPanel: React.FC = () => {
           v_sensitivity: vviSensitivity
         }).catch(err => console.error('Error setting initial active control for VVI:', err));
       }
-
     }
     
     // If exiting async message mode
     if (showAsyncMessage) {
       setShowAsyncMessage(false);
     }
-  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, handleLockError, resetAutoLockTimer]);
+  }, [isLocked, showDDDSettings, showVVISettings, showDOOSettings, pendingModeIndex, modes, showAsyncMessage, encoderConnected, handleLockError, resetAutoLockTimer]);
+
 
   // Check encoder connection on startup
   useEffect(() => {
@@ -950,7 +1036,8 @@ useEffect(() => {
       {/* Battery and Mode Header */}
       <BatteryHeader
         // batteryLevel={batteryLevel}
-        selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
+        // selectedMode={modes[pendingModeIndex]} // Use pendingModeIndex instead of selectedModeIndex
+        selectedMode={modes[selectedModeIndex]}
         isLocked={isLocked}
         // onBatteryChange={setBatteryLevel}
       />
