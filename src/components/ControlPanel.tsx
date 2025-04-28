@@ -886,7 +886,7 @@ useEffect(() => {
           isLocked={isLocked}
           selectedSetting={selectedDDDSetting}
           onNavigate={handleModeNavigation}
-          encoderConnected={encoderConnected} // Add this line
+          encoderConnected={encoderConnected} 
         />
       );
     } else if (showVVISettings) {
@@ -896,7 +896,7 @@ useEffect(() => {
           onVSensitivityChange={handleVVISensitivityChange}
           onBack={handleLeftArrowPress}
           isLocked={isLocked}
-          encoderConnected={encoderConnected} // Add this line
+          encoderConnected={encoderConnected} 
         />
       );
     } else if (showDOOSettings) {
@@ -929,7 +929,7 @@ useEffect(() => {
               className={`py-2.5 px-6 rounded-2xl text-sm font-medium transition-all
                 ${index === pendingModeIndex 
                   ? 'bg-blue-500 text-white' 
-                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-100' // where to change darkness of other modes 
                 }
                 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}
               `}
