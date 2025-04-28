@@ -909,7 +909,7 @@ useEffect(() => {
     } else {
       // Normal mode selection grid
       return (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           {modes.map((mode, index) => (
             <button
               key={mode}
@@ -926,7 +926,7 @@ useEffect(() => {
                   handleLockError();
                 }
               }}
-              className={`py-2.5 px-6 rounded-2xl text-sm font-medium transition-all
+              className={`py-4 px-6 rounded-2xl text-sm font-medium transition-all
                 ${index === pendingModeIndex 
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-100' // where to change darkness of other modes 
@@ -945,6 +945,8 @@ useEffect(() => {
   // Main control panel UI
   return (
     <div className="max-w-2xl mx-auto p-8 bg-gray-50 min-h-screen">
+     {/* <div className="max-w-2xl mx-auto p-4 bg-gray-50" style={{ minHeight: 'calc(100vh - 2rem)' }}> */}
+
       {/* Battery and Mode Header */}
       <BatteryHeader
         // batteryLevel={batteryLevel}
@@ -1003,11 +1005,13 @@ useEffect(() => {
 
       {/* Mode Selection and Control Buttons */}
       <div className="flex gap-4">
-        <div className="bg-white rounded-3xl shadow-sm p-6 flex-1" style={{ minHeight: '200px' }}>
+        <div className="bg-white rounded-3xl shadow-sm p-6 flex-1" style={{ minHeight: '300px' }}>
+        {/* <div className="bg-white rounded-3xl shadow-sm p-4 flex-1 overflow-y-auto max-h-[calc(100vh-300px)]"> */}
+
           {renderModePanel()}
         </div>
 
-        <div className="flex flex-col gap-3">
+        {/* <div className="flex flex-col gap-3">
           <button 
             onClick={handleLockToggle}
             className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
@@ -1031,7 +1035,7 @@ useEffect(() => {
             className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
           >
             <ChevronDown className="w-5 h-5 text-gray-600" />
-          </button>
+          </button> */}
           {/* <button
             onMouseDown={handlePauseStart}
             onMouseUp={handlePauseEnd}
@@ -1040,7 +1044,7 @@ useEffect(() => {
           >
             <Pause className="w-5 h-5 text-gray-600" />
           </button> */}
-        </div>
+        {/* </div> */}
       </div>
 
       {/* Notifications */}

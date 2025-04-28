@@ -147,7 +147,7 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
 
   return (
     <div className="bg-white rounded-xl">
-      <div className="flex justify-between items-center border-b p-2">
+      <div className="flex justify-between items-center border-b p-4">
         <h2 className="text-lg font-semibold">DDD Settings</h2>
       </div>
       

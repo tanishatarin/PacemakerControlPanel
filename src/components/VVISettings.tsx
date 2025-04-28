@@ -72,7 +72,7 @@ const VVISettings: React.FC<VVISettingsProps> = ({
   return (
     <div className="">
       <div className="bg-white rounded-xl">
-        <div className="flex justify-between items-center border-b p-2">
+        <div className="flex justify-between items-center border-b p-4">
           <h2 className="text-lg font-semibold">VVI Settings</h2>
           <div className="w-5"></div> {/* Spacer for alignment */}
         </div>
