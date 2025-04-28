@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { updateControls } from '../utils/encoderApi';
 
 // Interface for the DDD Settings component
@@ -27,6 +27,8 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
   selectedSetting = 'aSensitivity',
   encoderConnected = false
 }) => {
+  const [hardwareValues, setHardwareValues] = useState({ a: 0, v: 0 });
+
   const handleChange = (key: string, value: any) => {
     if (isLocked) return;
     onSettingsChange(key, value);
@@ -73,6 +75,32 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
       handleChange('vSensitivity', parseFloat(actualValue.toFixed(1)));
     }
   };
+
+  // Add this effect to directly track hardware values
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    const fetchDirectHardwareValues = async () => {
+      try {
+        const response = await fetch('http://raspberrypi.local:5000/api/sensitivity');
+        if (response.ok) {
+          const data = await response.json();
+          setHardwareValues({
+            a: data.a_sensitivity || 0,
+            v: data.v_sensitivity || 0
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching direct sensitivity values:', err);
+      }
+    };
+    
+    fetchDirectHardwareValues();
+    const interval = setInterval(fetchDirectHardwareValues, 100);
+    
+    return () => clearInterval(interval);
+  }, [encoderConnected]);
+
 
   // Effect to update hardware encoder active control based on selected setting
   useEffect(() => {
@@ -130,6 +158,9 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
             <span className={`text-sm ${selectedSetting === 'aSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
               {selectedSetting === 'aSensitivity' && "➤ "}A Sensitivity
             </span>
+            <div className="text-xs text-gray-400 mt-1">
+              Hardware value: {hardwareValues.a.toFixed(1)} mV
+            </div>
             <span className="text-sm font-medium">
               {settings.aSensitivity === 0 ? "ASYNC" : `${settings.aSensitivity.toFixed(1)} mV`}
             </span>
@@ -169,6 +200,9 @@ const DDDSettings: React.FC<DDDSettingsProps> = ({
             <span className={`text-sm ${selectedSetting === 'vSensitivity' ? 'text-blue-700 font-medium' : 'text-gray-500'}`}>
               {selectedSetting === 'vSensitivity' && "➤ "}V Sensitivity
             </span>
+            <div className="text-xs text-gray-400 mt-1">
+              Hardware value: {hardwareValues.v.toFixed(1)} mV
+            </div>
             <span className="text-sm font-medium">
               {settings.vSensitivity === 0 ? "ASYNC" : `${settings.vSensitivity.toFixed(1)} mV`}
             </span>

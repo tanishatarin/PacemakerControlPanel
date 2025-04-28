@@ -17,7 +17,8 @@ import {
   ApiStatus,
   EncoderControlData,
   getSensitivityDebug,
-  resetEncoder
+  resetEncoder,
+  getSensitivity
 } from '../utils/encoderApi';
 
 
@@ -387,7 +388,46 @@ useEffect(() => {
       return () => clearInterval(interval);
     }
   }, [encoderConnected]);
-  
+
+  // sync sensitivity values
+  useEffect(() => {
+    if (!encoderConnected) return;
+    
+    // Create a dedicated function to fetch and update sensitivity values
+    const syncSensitivityValues = async () => {
+      try {
+        const sensitivity = await getSensitivity();
+        if (sensitivity) {
+          // Update the sensitivity values in the UI directly from hardware
+          if (sensitivity.a_sensitivity !== undefined) {
+            setDddSettings(prev => ({
+              ...prev,
+              aSensitivity: sensitivity.a_sensitivity
+            }));
+          }
+          
+          if (sensitivity.v_sensitivity !== undefined) {
+            setDddSettings(prev => ({
+              ...prev,
+              vSensitivity: sensitivity.v_sensitivity
+            }));
+            setVviSensitivity(sensitivity.v_sensitivity);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to sync sensitivity values:', error);
+      }
+    };
+    
+    // Initial sync
+    syncSensitivityValues();
+    
+    // Set up periodic sync
+    const interval = setInterval(syncSensitivityValues, 200);
+    
+    return () => clearInterval(interval);
+  }, [encoderConnected]);
+    
   // Start encoder polling if connected
   useEffect(() => {
     if (!encoderConnected) return;
