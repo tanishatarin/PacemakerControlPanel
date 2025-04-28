@@ -130,12 +130,13 @@ const ControlPanel: React.FC = () => {
     setShowDDDSettings(false);
     setShowVVISettings(false);
     setShowDOOSettings(false);
+    setShowAAISettings(false);
     
     // If connected to hardware, update hardware values
     if (encoderConnected) {
       updateControls({
         rate: 80,
-        a_output: 10.0,
+        a_output: 3.0, // TODO -- hardcode for claire 
         v_output: 10.0,
         a_sensitivity: 0.5,
         v_sensitivity: 2.0,
