@@ -17,13 +17,39 @@ const HardwareVOutputControl: React.FC<HardwareVOutputControlProps> = ({
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   
   // Function to fetch the current encoder value from Raspberry Pi
+  // const fetchVOutputFromHardware = async () => {
+  //   try {
+  //     const response = await fetch('http://raspberrypi.local:5000/api/v_output');
+      
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       // Only update if value has changed
+  //       if (Math.abs(data.value - value) > 0.05) {
+  //         if (isLocked) {
+  //           onLockError();
+  //         } else {
+  //           onChange(data.value);
+  //         }
+  //       }
+  //       setConnectionStatus('connected');
+  //     } else {
+  //       setConnectionStatus('error');
+  //     }
+  //   } catch (err) {
+  //     console.error('Error fetching V. Output:', err);
+  //     setConnectionStatus('error');
+  //   }
+  // };
+  // In HardwareVOutputControl.tsx - Ensure fetch is using the correct URL and error handling
   const fetchVOutputFromHardware = async () => {
     try {
       const response = await fetch('http://raspberrypi.local:5000/api/v_output');
       
       if (response.ok) {
         const data = await response.json();
-        // Only update if value has changed
+        console.log("V Output from hardware:", data.value); // Debug logging
+        
+        // Only update if value has changed significantly
         if (Math.abs(data.value - value) > 0.05) {
           if (isLocked) {
             onLockError();
@@ -33,6 +59,7 @@ const HardwareVOutputControl: React.FC<HardwareVOutputControlProps> = ({
         }
         setConnectionStatus('connected');
       } else {
+        console.error("Error fetching V Output:", response.status, response.statusText);
         setConnectionStatus('error');
       }
     } catch (err) {
@@ -40,7 +67,7 @@ const HardwareVOutputControl: React.FC<HardwareVOutputControlProps> = ({
       setConnectionStatus('error');
     }
   };
-  
+
   // Send V. Output changes back to the hardware
   const updateHardwareVOutput = async (newValue: number) => {
     try {
