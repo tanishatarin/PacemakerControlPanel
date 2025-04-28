@@ -44,9 +44,9 @@ export interface EncoderControlData {
   v_output?: number;
   locked?: boolean;
   mode?: number;
+  active_control?: string;
   a_sensitivity?: number;
   v_sensitivity?: number;
-  active_control?: string;
 }
 
 // Base URL for API calls
@@ -259,7 +259,6 @@ export const getLockState = async (): Promise<boolean | null> => {
   }
 };
 
-
 // Get the current sensitivity settings
 export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensitivity: number, active_control: string} | null> => {
   try {
@@ -284,7 +283,6 @@ export const getSensitivity = async (): Promise<{a_sensitivity: number, v_sensit
     return null;
   }
 };
-
 
 // Add a debounce utility function
 const debounce = <F extends (...args: any[]) => any>(
@@ -320,6 +318,81 @@ export const updateSensitivityControlDebounced = debounce(
 );
 
 // Add to the polling function to ensure hardware emergency button works
+// export const startEncoderPolling = (
+//   onDataUpdate: (data: EncoderControlData) => void,
+//   onStatusUpdate: (status: ApiStatus) => void,
+//   pollInterval = 100,
+//   ignoreUpdateSources: string[] = []
+// ) => {
+//   let isPolling = true;
+  
+//   const pollHealth = async () => {
+//     if (!isPolling) return;
+    
+//     try {
+//       const status = await checkEncoderStatus();
+      
+//       if (status) {
+//         // Update status data
+//         onStatusUpdate(status);
+        
+//         // Extract control values and pass to data update handler
+//         const controlData: EncoderControlData = {
+//           rate: status.rate,
+//           a_output: status.a_output,
+//           v_output: status.v_output,
+//           locked: status.locked,
+//           mode: status.mode,
+//           a_sensitivity: status.a_sensitivity,
+//           v_sensitivity: status.v_sensitivity,
+//           active_control: status.active_control
+//         };
+        
+//         onDataUpdate(controlData);
+        
+//         // Check for button presses
+//         if (status.buttons) {
+//           // Handle up button press
+//           if (status.buttons.up_pressed) {
+//             window.dispatchEvent(new CustomEvent('hardware-up-button-pressed'));
+//           }
+          
+//           // Handle down button press
+//           if (status.buttons.down_pressed) {
+//             window.dispatchEvent(new CustomEvent('hardware-down-button-pressed'));
+//           }
+          
+//           // Handle left button press
+//           if (status.buttons.left_pressed) {
+//             window.dispatchEvent(new CustomEvent('hardware-left-button-pressed'));
+//           }
+          
+//           // Handle emergency button press
+//           if (status.buttons.emergency_pressed) {
+//             window.dispatchEvent(new CustomEvent('hardware-emergency-button-pressed'));
+//           }
+//         }
+//       }
+//     } catch (error) {
+//       console.error('Polling error:', error);
+//     } finally {
+//       if (isPolling) {
+//         setTimeout(pollHealth, pollInterval);
+//       }
+//     }
+//   };
+  
+//   // Start initial poll
+//   pollHealth();
+  
+//   // Return a function to stop polling
+//   return () => {
+//     isPolling = false;
+//   };
+// };
+
+
+// Add to the polling function to ensure hardware emergency button works
 export const startEncoderPolling = (
   onDataUpdate: (data: EncoderControlData) => void,
   onStatusUpdate: (status: ApiStatus) => void,
@@ -344,10 +417,9 @@ export const startEncoderPolling = (
           a_output: status.a_output,
           v_output: status.v_output,
           locked: status.locked,
-          mode: status.mode,
+          mode: status.mode,  // Include mode in the control data
           a_sensitivity: status.a_sensitivity,
-          v_sensitivity: status.v_sensitivity,
-          active_control: status.active_control
+          v_sensitivity: status.v_sensitivity
         };
         
         onDataUpdate(controlData);
@@ -392,3 +464,4 @@ export const startEncoderPolling = (
     isPolling = false;
   };
 };
+

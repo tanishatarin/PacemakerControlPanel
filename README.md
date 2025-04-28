@@ -67,8 +67,8 @@ pause ??
 
 
 to ensure things work properly: 
- black = ground 
- red = 5 volts 
- blue = logic pin 
- yellow = ground 
+ black = ground = negative
+ red = 5 volts = positive
+ blue = logic pin = rpi
+ yellow = ground = negative
 

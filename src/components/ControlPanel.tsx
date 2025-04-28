@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronUp, ChevronDown, Key, Pause } from 'lucide-react';
+import { ChevronLeft, ChevronUp, ChevronDown, Key } from 'lucide-react';
 import { BatteryHeader } from './BatteryHeader';
 import Notifications from './Notifications';
 import DDDSettings from './DDDSettings';
@@ -40,7 +40,7 @@ const ControlPanel: React.FC = () => {
   const [showAsyncMessage, setShowAsyncMessage] = useState(false);
   const [showLockMessage, setShowLockMessage] = useState(false);
   const [isPausing, setIsPausing] = useState(false);
-  const [pauseTimeLeft, setPauseTimeLeft] = useState(10);
+  // const [pauseTimeLeft, setPauseTimeLeft] = useState(10);
   
   // Mode settings states
   const [showDDDSettings, setShowDDDSettings] = useState(false);
@@ -68,7 +68,7 @@ const ControlPanel: React.FC = () => {
   // VVI Mode specific state
   const [vviSensitivity, setVviSensitivity] = useState(2.0);
   
-  const pauseTimerRef = useRef<number>();
+  // const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
   const lastUpdateRef = useRef<{ source: string, time: number }>({ source: 'init', time: Date.now() });
 
@@ -421,6 +421,38 @@ useEffect(() => {
           setVOutput(data.v_output);
         }
 
+
+        // Handle mode changes from hardware
+        if (data.mode !== undefined && data.mode !== selectedModeIndex) {
+          console.log(`Mode change detected from hardware: ${data.mode}`);
+          
+          // Update both selected and pending mode indices
+          setSelectedModeIndex(data.mode);
+          setPendingModeIndex(data.mode);
+          
+          // Handle special mode screens
+          if (data.mode === 5) { // DOO mode
+            setShowDOOSettings(true);
+            setShowDDDSettings(false);
+            setShowVVISettings(false);
+          } else if (data.mode === 6) { // DDD mode
+            // If entering DDD mode, show DDD settings
+            setShowDDDSettings(true);
+            setShowVVISettings(false);
+            setShowDOOSettings(false);
+          } else if (data.mode === 1) { // VVI mode
+            // If entering VVI mode, show VVI settings
+            setShowVVISettings(true);
+            setShowDDDSettings(false);
+            setShowDOOSettings(false);
+          } else {
+            // For other modes, hide all special settings
+            setShowDDDSettings(false);
+            setShowVVISettings(false);
+            setShowDOOSettings(false);
+          }
+        }
+
         // Handle sensitivity value updates from hardware
         if (data.a_sensitivity !== undefined) {
           setDddSettings(prev => {
@@ -471,6 +503,13 @@ useEffect(() => {
       (status) => {
         setHardwareStatus(status);
 
+        // Also update mode from status if available
+        if (status.mode !== undefined && status.mode !== selectedModeIndex) {
+          console.log(`Mode update from status: ${status.mode}`);
+          setSelectedModeIndex(status.mode);
+          setPendingModeIndex(status.mode);
+        }
+
         // if autolock timer is active, reset it
         if (status.encoder_active) {
           console.log("Encoder activity detected - resetting auto-lock timer");
@@ -488,32 +527,32 @@ useEffect(() => {
       console.log('Stopping encoder polling');
       stopPolling();
     };
-  }, [encoderConnected, rate, aOutput, vOutput, vviSensitivity, localControlActive, autoLockTimer, isLocked, isControlsLocked]);
+  }, [encoderConnected, rate, aOutput, vOutput, vviSensitivity, localControlActive, autoLockTimer, isLocked, isControlsLocked, selectedModeIndex]);
 
   // Handle pause button functionality
-  useEffect(() => {
-    if (isPausing) {
-      pauseTimerRef.current = window.setInterval(() => {
-        setPauseTimeLeft((prev) => {
-          if (prev <= 1) {
-            setIsPausing(false);
-            clearInterval(pauseTimerRef.current);
-            return 10;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(pauseTimerRef.current);
-      setPauseTimeLeft(10);
-    }
+  // useEffect(() => {
+  //   if (isPausing) {
+  //     pauseTimerRef.current = window.setInterval(() => {
+  //       setPauseTimeLeft((prev) => {
+  //         if (prev <= 1) {
+  //           setIsPausing(false);
+  //           clearInterval(pauseTimerRef.current);
+  //           return 10;
+  //         }
+  //         return prev - 1;
+  //       });
+  //     }, 1000);
+  //   } else {
+  //     clearInterval(pauseTimerRef.current);
+  //     setPauseTimeLeft(10);
+  //   }
 
-    return () => {
-      if (pauseTimerRef.current) {
-        clearInterval(pauseTimerRef.current);
-      }
-    };
-  }, [isPausing]);
+  //   return () => {
+  //     if (pauseTimerRef.current) {
+  //       clearInterval(pauseTimerRef.current);
+  //     }
+  //   };
+  // }, [isPausing]);
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -781,20 +820,20 @@ useEffect(() => {
   };
 
   // Handle pause button states
-  const handlePauseStart = () => {
-    resetAutoLockTimer();
+  // const handlePauseStart = () => {
+  //   resetAutoLockTimer();
     
-    if (isControlsLocked()) {
-      handleLockError();
-      return;
-    }
+  //   if (isControlsLocked()) {
+  //     handleLockError();
+  //     return;
+  //   }
     
-    setIsPausing(true);
-  };
+  //   setIsPausing(true);
+  // };
 
-  const handlePauseEnd = () => {
-    setIsPausing(false);
-  };
+  // const handlePauseEnd = () => {
+  //   setIsPausing(false);
+  // };
     
   // Render the appropriate mode panel
   const renderModePanel = () => {
@@ -874,10 +913,10 @@ useEffect(() => {
         onBatteryChange={setBatteryLevel}
       /> */}
 
-      <BatteryHeader
-        selectedMode={modes[pendingModeIndex]}
-        isLocked={isLocked}
-      />
+    {/* <BatteryHeader
+      selectedMode={modes[pendingModeIndex]}
+      isLocked={isLocked}
+    /> */}
 
     {/* Encoder Connection Status */}
     {encoderConnected && (
@@ -953,14 +992,14 @@ useEffect(() => {
           >
             <ChevronDown className="w-5 h-5 text-gray-600" />
           </button>
-          <button
+          {/* <button
             onMouseDown={handlePauseStart}
             onMouseUp={handlePauseEnd}
             onMouseLeave={handlePauseEnd}
             className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
           >
             <Pause className="w-5 h-5 text-gray-600" />
-          </button>
+          </button> */}
         </div>
       </div>
 
@@ -969,7 +1008,7 @@ useEffect(() => {
         showAsyncMessage={showAsyncMessage}
         showLockMessage={showLockMessage}
         isPausing={isPausing}
-        pauseTimeLeft={pauseTimeLeft}
+        // pauseTimeLeft={pauseTimeLeft}
       />
     </div>
   );
