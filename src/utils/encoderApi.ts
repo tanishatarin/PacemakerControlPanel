@@ -464,4 +464,3 @@ export const startEncoderPolling = (
     isPolling = false;
   };
 };
-
