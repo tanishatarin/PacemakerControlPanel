@@ -67,33 +67,40 @@
     padding: 0;
     overflow: hidden;
     background-color: white;
+    width: 100vw;
+    height: 100vh;
   }
 }
 
-/* Set basic body styling */
-html, body {
+/* Set up the root container to fill the entire window */
+html, body, #root {
   margin: 0;
   padding: 0;
-  background-color: white;
+  width: 100%;
   height: 100%;
   overflow: hidden;
+  background-color: white;
 }
 
+/* Apply rotation to the root element */
 #root {
-  transform: rotate(90deg) scale(0.9);
-  transform-origin: top left;
+  transform: rotate(90deg);
+  transform-origin: center center;
   width: 100vh;
   height: 100vw;
   position: absolute;
-  top: 100%;
-  left: 100%;
-  margin-top: -50vw;
-  margin-left: -33vh;
+  top: 50%;
+  left: 50%;
+  margin-top: -50vw; /* Half of height */
+  margin-left: -50vh; /* Half of width */
 }
 
-/* Optional: Add padding around content */
+/* Make sure the pacemaker app container fills its parent */
 .min-h-screen {
+  min-height: 100%;
+  width: 100%;
   padding: 16px;
+  box-sizing: border-box;
 }
 
 /* Make sure buttons are properly sized for touch */
@@ -139,4 +146,17 @@ svg {
   width: 3px !important;
   height: 14px !important;
   display: block !important;
+}
+
+/* Add responsive scaling for different screen sizes */
+@media (max-width: 768px) {
+  #root {
+    transform: rotate(90deg) scale(0.9);
+  }
+}
+
+@media (max-width: 480px) {
+  #root {
+    transform: rotate(90deg) scale(0.85);
+  }
 }
