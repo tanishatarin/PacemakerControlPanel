@@ -20,7 +20,7 @@ import {
   resetEncoder,
   getSensitivity
 } from '../utils/encoderApi';
-
+import { ChevronDown, ChevronUp, ChevronLeft, Key } from 'lucide-react';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -1149,8 +1149,12 @@ useEffect(() => {
             className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
           >
             <ChevronDown className="w-5 h-5 text-gray-600" />
-          </button> */}
-          {/* <button
+          </button>
+        </div> */}
+      </div>
+
+      {/* Notifications, the pause button below was in the panel above originaly  */}
+      {/* <button
             onMouseDown={handlePauseStart}
             onMouseUp={handlePauseEnd}
             onMouseLeave={handlePauseEnd}
@@ -1158,10 +1162,6 @@ useEffect(() => {
           >
             <Pause className="w-5 h-5 text-gray-600" />
           </button> */}
-        {/* </div> */}
-      </div>
-
-      {/* Notifications */}
       {/* <Notifications
         showAsyncMessage={showAsyncMessage}
         showLockMessage={showLockMessage}
