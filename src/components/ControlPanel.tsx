@@ -1162,6 +1162,10 @@ useEffect(() => {
           >
             <Pause className="w-5 h-5 text-gray-600" />
           </button> */}
+        </div>
+      </div>
+
+      {/* Notifications */}
       {/* <Notifications
         showAsyncMessage={showAsyncMessage}
         showLockMessage={showLockMessage}
