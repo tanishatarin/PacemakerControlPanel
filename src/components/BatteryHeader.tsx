@@ -25,8 +25,8 @@ export const BatteryHeader: React.FC<BatteryHeaderProps> = ({
       
       <div className="flex-none">
         {isLocked ? 
-          <Lock className="w-6 h-6 text-green-500" /> : 
-          <LockOpen className="w-6 h-6 text-gray-400" />
+          <Lock className="w-8 h-8 text-red-500" /> : 
+          <LockOpen className="w-8 h-8 text-gray-400" />
         }
       </div>
     </div>

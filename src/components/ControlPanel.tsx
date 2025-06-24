@@ -4,6 +4,7 @@ import { BatteryHeader } from './BatteryHeader';
 import DDDSettings from './DDDSettings';
 import VVISettings from './VVISettings';
 import DOOSettings from './DOOSettings';
+import AAISettings from './AAISettings';
 import HardwareRateControl from './HardwareRateControl';
 import HardwareAOutputControl from './HardwareAOutputControl';
 import HardwareVOutputControl from './HardwareVOutputControl';
@@ -19,8 +20,7 @@ import {
   resetEncoder,
   getSensitivity
 } from '../utils/encoderApi';
-import {Key, ChevronUp, ChevronDown, ChevronLeft} from 'lucide-react';
-
+import { ChevronDown, ChevronUp, ChevronLeft, Key } from 'lucide-react';
 
 const ControlPanel: React.FC = () => {
   // Main control values
@@ -46,6 +46,7 @@ const ControlPanel: React.FC = () => {
   const [showDDDSettings, setShowDDDSettings] = useState(false);
   const [showVVISettings, setShowVVISettings] = useState(false);
   const [showDOOSettings, setShowDOOSettings] = useState(false);
+  const [showAAISettings, setShowAAISettings] = useState(false);
   
   // Hardware connection state
   const [encoderConnected, setEncoderConnected] = useState(false);
@@ -67,6 +68,7 @@ const ControlPanel: React.FC = () => {
   
   // VVI Mode specific state
   const [vviSensitivity, setVviSensitivity] = useState(2.0);
+  const [aaiSensitivity, setAaiSensitivity] = useState(0.5);
   
   // const pauseTimerRef = useRef<number>();
   const modes = ['VOO', 'VVI', 'VVT', 'AOO', 'AAI', 'DOO', 'DDD', 'DDI'];
@@ -128,12 +130,13 @@ const ControlPanel: React.FC = () => {
     setShowDDDSettings(false);
     setShowVVISettings(false);
     setShowDOOSettings(false);
+    setShowAAISettings(false);
     
     // If connected to hardware, update hardware values
     if (encoderConnected) {
       updateControls({
         rate: 80,
-        a_output: 10.0,
+        a_output: 3.0, // TODO -- hardcode for claire 
         v_output: 10.0,
         a_sensitivity: 0.5,
         v_sensitivity: 2.0,
@@ -208,13 +211,14 @@ const ControlPanel: React.FC = () => {
     }
     
     // If we're in other settings screens, go back to the mode selection
-    if (showDDDSettings || showVVISettings) {
+    if (showDDDSettings || showVVISettings || showAAISettings) {
       if (encoderConnected) {
         updateControls({ active_control: 'none' })
           .catch(err => console.error('Failed to reset active control:', err));
       }
       setShowDDDSettings(false);
       setShowVVISettings(false);
+      setShowAAISettings(false);
       return;
     }
     
@@ -271,6 +275,19 @@ const ControlPanel: React.FC = () => {
           active_control: 'v_sensitivity',
           v_sensitivity: vviSensitivity
         }).catch(err => console.error('Error setting initial active control for VVI:', err));
+      }
+    } else if (newMode === 'AAI') {
+      setShowAAISettings(true);
+      setShowDDDSettings(false);
+      setShowVVISettings(false);
+      setShowDOOSettings(false);
+    
+      // Set the active control to A Sensitivity when entering AAI settings
+      if (encoderConnected) {
+        updateControls({
+          active_control: 'a_sensitivity',
+          a_sensitivity: aaiSensitivity
+        }).catch(err => console.error('Error setting initial active control for AAI:', err));
       }
     }
     
@@ -466,6 +483,7 @@ useEffect(() => {
               ...prev,
               aSensitivity: sensitivity.a_sensitivity
             }));
+            setAaiSensitivity(sensitivity.a_sensitivity);
           }
           
           if (sensitivity.v_sensitivity !== undefined) {
@@ -546,6 +564,12 @@ useEffect(() => {
             // If entering VVI mode, show VVI settings
             setShowVVISettings(true);
             setShowDDDSettings(false);
+            setShowDOOSettings(false);
+          } else if (data.mode === 4) { // AAI mode (index 4 in modes array)
+            // If entering AAI mode, show AAI settings
+            setShowAAISettings(true);
+            setShowDDDSettings(false);
+            setShowVVISettings(false);
             setShowDOOSettings(false);
           } else {
             // For other modes, hide all special settings
@@ -686,6 +710,13 @@ useEffect(() => {
       setShowAsyncMessage(true);
       setTimeout(() => setShowAsyncMessage(false), 3000);
     }
+
+    // If in AAI mode and A Output is set to 0, show notification
+    if (modes[selectedModeIndex] === 'AAI' && aOutput === 0) {
+      // Show notification
+      setShowAsyncMessage(true);
+      setTimeout(() => setShowAsyncMessage(false), 3000);
+    }
   }, [aOutput, vOutput, selectedModeIndex, modes]);
 
   // Handle DDD Settings changes
@@ -738,6 +769,33 @@ useEffect(() => {
       updateControls({ 
         active_control: 'v_output',
         v_output: value  // Might need adjustment depending on your implementation
+      });
+      
+      // Allow hardware control again after a short delay
+      setTimeout(() => {
+        setLocalControlActive(false);
+      }, 500);
+    }
+  };
+
+  // Handle AAI sensitivity change
+  const handleAAISensitivityChange = (value: number) => {
+    if (isLocked) {
+      handleLockError();
+      return;
+    }
+    
+    setAaiSensitivity(value);
+    
+    // If connected to hardware, send update
+    if (encoderConnected) {
+      // Flag that we initiated this change
+      lastUpdateRef.current = { source: 'frontend', time: Date.now() };
+      setLocalControlActive(true);
+      
+      updateControls({ 
+        active_control: 'a_sensitivity',
+        a_sensitivity: value
       });
       
       // Allow hardware control again after a short delay
@@ -968,6 +1026,16 @@ useEffect(() => {
           isLocked={isLocked}
         />
       );
+    } else if (showAAISettings) {
+      return (
+        <AAISettings
+          aSensitivity={aaiSensitivity}
+          onASensitivityChange={handleAAISensitivityChange}
+          onBack={handleLeftArrowPress}
+          isLocked={isLocked}
+          encoderConnected={encoderConnected}
+        />
+      );
     } else {
       // Normal mode selection grid
       return (
@@ -1082,7 +1150,11 @@ useEffect(() => {
           >
             <ChevronDown className="w-5 h-5 text-gray-600" />
           </button>
-          {/* <button
+        </div> */}
+      </div>
+
+      {/* Notifications, the pause button below was in the panel above originaly  */}
+      {/* <button
             onMouseDown={handlePauseStart}
             onMouseUp={handlePauseEnd}
             onMouseLeave={handlePauseEnd}
