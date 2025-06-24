@@ -1125,7 +1125,7 @@ useEffect(() => {
           {renderModePanel()}
         </div>
 
-        {/* <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-8 my-3">
           <button 
             onClick={handleLockToggle}
             className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center hover:bg-gray-50"
@@ -1150,7 +1150,7 @@ useEffect(() => {
           >
             <ChevronDown className="w-5 h-5 text-gray-600" />
           </button>
-        </div> */}
+        </div>
       </div>
 
       {/* Notifications, the pause button below was in the panel above originaly  */}
