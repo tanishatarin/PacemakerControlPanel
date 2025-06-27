@@ -656,38 +656,7 @@ def handle_websocket_client(client_socket):
                         })
                         client_socket.sendall(create_websocket_frame(response))
                     
-                    # Handle control updates
-                    # elif 'type' in parsed and parsed['type'] == 'control_update' and 'updates' in parsed:
-                        # Check if this is an admin token or allow sensitivity updates for all
-                        # if client_auth_token == 'pacemaker_token_123':
-                        #     # Admin can update everything
-                        #     apply_control_updates(parsed['updates'])
-                        #     response = json.dumps({
-                        #         "type": "info",
-                        #         "message": "Control updated successfully"
-                        #     })
-                        #     client_socket.sendall(create_websocket_frame(response))
-                        # elif client_auth_token and ('vSensitivity' in parsed['updates'] or 'aSensitivity' in parsed['updates']):
-                        #     # Non-admin can only update sensitivity
-                        #     updates = {
-                        #         k: v for k, v in parsed['updates'].items() 
-                        #         if k in ['vSensitivity', 'aSensitivity']
-                        #     }
-                        #     apply_control_updates(updates)
-                        #     response = json.dumps({
-                        #         "type": "info",
-                        #         "message": "Sensitivity updated successfully"
-                        #     })
-                        #     client_socket.sendall(create_websocket_frame(response))
-                        # else:
-                        #     # Unauthorized
-                        #     response = json.dumps({
-                        #         "type": "error",
-                        #         "message": "Unauthorized control update"
-                        #     })
-                        #     client_socket.sendall(create_websocket_frame(response))
-
-                    # QUICKLY REVERT - Replace your WebSocket control update section with this minimal fix:
+                    # Handle control updates - is taking in the updated values from the simulation when it reconnects !!!! 
                     elif 'type' in parsed and parsed['type'] == 'control_update' and 'updates' in parsed:
                         # Check if this is an admin token or allow ALL updates for secondary app
                         if client_auth_token == 'pacemaker_token_123':
@@ -735,47 +704,6 @@ def handle_websocket_client(client_socket):
         except:
             pass
         print(f"WebSocket client disconnected")
-
-# def apply_control_updates(updates):
-#     """Apply updates from client to the current state"""
-#     global current_state, a_sensitivity, v_sensitivity, current_rate, current_a_output, current_v_output, is_locked
-    
-#     # Only apply specific updates that we support
-#     if 'aSensitivity' in updates:
-#         a_sensitivity = float(updates['aSensitivity'])
-#         current_state["aSensitivity"] = a_sensitivity
-    
-#     if 'vSensitivity' in updates:
-#         v_sensitivity = float(updates['vSensitivity'])
-#         current_state["vSensitivity"] = v_sensitivity
-    
-#     if 'rate' in updates:
-#         current_rate = int(updates['rate'])
-#         current_state["rate"] = current_rate
-#         rate_encoder.steps = current_rate
-#         if hasattr(update_rate, 'last_steps'):
-#             update_rate.last_steps = current_rate
-
-#     if 'a_output' in updates:
-#         current_a_output = float(updates['a_output'])
-#         current_state["a_output"] = current_a_output
-#         a_output_encoder.steps = int(current_a_output * 10)  # Optional: depends on scale
-#         last_a_output_steps = a_output_encoder.steps
-
-#     if 'v_output' in updates:
-#         current_v_output = float(updates['v_output'])
-#         current_state["v_output"] = current_v_output
-#         v_output_encoder.steps = int(current_v_output * 10)
-#         last_v_output_steps = v_output_encoder.steps
-
-    
-#     if 'isLocked' in updates:
-#         is_locked = bool(updates['isLocked'])
-#         current_state["isLocked"] = is_locked
-    
-#     # Update the timestamp
-#     current_state["lastUpdate"] = time.time()
-
 
 def apply_control_updates(updates):
     """Apply updates from client to the current state"""
