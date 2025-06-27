@@ -686,82 +686,36 @@ def handle_websocket_client(client_socket):
                                 "message": "Unauthorized control update"
                             })
                             client_socket.sendall(create_websocket_frame(response))
-                    # REPLACE your WebSocket message handling section in handle_websocket_client with this debug version:
 
-                    # In the handle_websocket_client function, replace the control update section:
-
+                    # QUICKLY REVERT - Replace your WebSocket control update section with this minimal fix:
                     elif 'type' in parsed and parsed['type'] == 'control_update' and 'updates' in parsed:
-                        print(f"🔍 RAW WebSocket message received: {parsed}")
-                        print(f"🔍 Client auth token: {client_auth_token}")
-                        print(f"🔍 Updates payload: {parsed['updates']}")
-                        
-                        # Check if this is an admin token or allow sensitivity updates for all
+                        # Check if this is an admin token or allow ALL updates for secondary app
                         if client_auth_token == 'pacemaker_token_123':
-                            print("✅ Admin token - allowing all updates")
-                            
-                            # BEFORE applying updates
-                            print(f"📊 BEFORE updates:")
-                            print(f"  current_rate: {current_rate}")
-                            print(f"  current_a_output: {current_a_output}")
-                            print(f"  current_v_output: {current_v_output}")
-                            print(f"  a_sensitivity: {a_sensitivity}")
-                            print(f"  v_sensitivity: {v_sensitivity}")
-                            
+                            # Admin can update everything
                             apply_control_updates(parsed['updates'])
-                            
-                            # AFTER applying updates
-                            print(f"📊 AFTER updates:")
-                            print(f"  current_rate: {current_rate}")
-                            print(f"  current_a_output: {current_a_output}")
-                            print(f"  current_v_output: {current_v_output}")
-                            print(f"  a_sensitivity: {a_sensitivity}")
-                            print(f"  v_sensitivity: {v_sensitivity}")
-                            
                             response = json.dumps({
                                 "type": "info",
                                 "message": "Control updated successfully"
                             })
                             client_socket.sendall(create_websocket_frame(response))
-                            
                         elif client_auth_token == 'secondary_app_token_456':
-                            # NON-ADMIN TOKEN - THIS IS YOUR TRAINING APP!
-                            print("⚠️  Secondary app token - checking what's allowed")
-                            
-                            # Allow ALL updates for secondary app, not just sensitivity
-                            print("✅ Allowing ALL updates from secondary app")
-                            
-                            # BEFORE applying updates
-                            print(f"📊 BEFORE updates:")
-                            print(f"  current_rate: {current_rate}")
-                            print(f"  current_a_output: {current_a_output}")
-                            print(f"  current_v_output: {current_v_output}")
-                            print(f"  a_sensitivity: {a_sensitivity}")
-                            print(f"  v_sensitivity: {v_sensitivity}")
-                            
+                            # FIXED: Allow ALL updates for secondary app, not just sensitivity
                             apply_control_updates(parsed['updates'])
-                            
-                            # AFTER applying updates
-                            print(f"📊 AFTER updates:")
-                            print(f"  current_rate: {current_rate}")
-                            print(f"  current_a_output: {current_a_output}")
-                            print(f"  current_v_output: {current_v_output}")
-                            print(f"  a_sensitivity: {a_sensitivity}")
-                            print(f"  v_sensitivity: {v_sensitivity}")
-                            
                             response = json.dumps({
-                                "type": "info",
+                                "type": "info", 
                                 "message": "All controls updated successfully"
                             })
                             client_socket.sendall(create_websocket_frame(response))
-                            
                         else:
                             # Unauthorized
-                            print(f"❌ Unauthorized token: {client_auth_token}")
                             response = json.dumps({
                                 "type": "error",
                                 "message": "Unauthorized control update"
                             })
                             client_socket.sendall(create_websocket_frame(response))
+
+
+
                 except json.JSONDecodeError:
                     print(f"Invalid JSON from client: {message}")
 
@@ -824,104 +778,47 @@ def handle_websocket_client(client_socket):
 #     current_state["lastUpdate"] = time.time()
 
 
-# REPLACE your apply_control_updates function with this super-debug version:
-
 def apply_control_updates(updates):
     """Apply updates from client to the current state"""
     global current_state, a_sensitivity, v_sensitivity, current_rate, current_a_output, current_v_output, is_locked
-    global last_a_output_steps, last_v_output_steps, rate_encoder, a_output_encoder, v_output_encoder
+    global last_a_output_steps, last_v_output_steps
     
-    print(f"🔧 apply_control_updates called with: {updates}")
+    # Only apply specific updates that we support
+    if 'aSensitivity' in updates:
+        a_sensitivity = float(updates['aSensitivity'])
+        current_state["aSensitivity"] = a_sensitivity
     
-    # Test each update type individually
-    for key, value in updates.items():
-        print(f"🔍 Processing update: {key} = {value}")
-        
-        if key == 'aSensitivity':
-            print(f"  📝 Old a_sensitivity: {a_sensitivity}")
-            a_sensitivity = float(value)
-            current_state["aSensitivity"] = a_sensitivity
-            print(f"  ✅ New a_sensitivity: {a_sensitivity}")
-            
-        elif key == 'vSensitivity':
-            print(f"  📝 Old v_sensitivity: {v_sensitivity}")
-            v_sensitivity = float(value)
-            current_state["vSensitivity"] = v_sensitivity
-            print(f"  ✅ New v_sensitivity: {v_sensitivity}")
-            
-        elif key == 'rate':
-            print(f"  📝 Old current_rate: {current_rate}")
-            print(f"  📝 Old rate_encoder.steps: {rate_encoder.steps}")
-            
-            current_rate = int(value)
-            current_state["rate"] = current_rate
-            
-            # Sync encoder position
-            old_encoder_steps = rate_encoder.steps
-            rate_encoder.steps = current_rate
-            
-            # Update tracking variable if it exists
-            if hasattr(update_rate, 'last_steps'):
-                update_rate.last_steps = current_rate
-                print(f"  📝 Updated update_rate.last_steps to: {current_rate}")
-            else:
-                print(f"  ⚠️  update_rate.last_steps doesn't exist!")
-            
-            print(f"  ✅ New current_rate: {current_rate}")
-            print(f"  ✅ New rate_encoder.steps: {rate_encoder.steps}")
-            
-        elif key == 'a_output':
-            print(f"  📝 Old current_a_output: {current_a_output}")
-            print(f"  📝 Old a_output_encoder.steps: {a_output_encoder.steps}")
-            print(f"  📝 Old last_a_output_steps: {last_a_output_steps}")
-            
-            current_a_output = float(value)
-            current_state["a_output"] = current_a_output
-            
-            # Calculate encoder steps
-            new_encoder_steps = int(current_a_output * 10)
-            a_output_encoder.steps = new_encoder_steps
-            last_a_output_steps = new_encoder_steps
-            
-            print(f"  ✅ New current_a_output: {current_a_output}")
-            print(f"  ✅ New a_output_encoder.steps: {a_output_encoder.steps}")
-            print(f"  ✅ New last_a_output_steps: {last_a_output_steps}")
-            
-        elif key == 'v_output':
-            print(f"  📝 Old current_v_output: {current_v_output}")
-            print(f"  📝 Old v_output_encoder.steps: {v_output_encoder.steps}")
-            print(f"  📝 Old last_v_output_steps: {last_v_output_steps}")
-            
-            current_v_output = float(value)
-            current_state["v_output"] = current_v_output
-            
-            # Calculate encoder steps
-            new_encoder_steps = int(current_v_output * 10)
-            v_output_encoder.steps = new_encoder_steps
-            last_v_output_steps = new_encoder_steps
-            
-            print(f"  ✅ New current_v_output: {current_v_output}")
-            print(f"  ✅ New v_output_encoder.steps: {v_output_encoder.steps}")
-            print(f"  ✅ New last_v_output_steps: {last_v_output_steps}")
-            
-        elif key == 'isLocked':
-            print(f"  📝 Old is_locked: {is_locked}")
-            is_locked = bool(value)
-            current_state["isLocked"] = is_locked
-            print(f"  ✅ New is_locked: {is_locked}")
-            
-        else:
-            print(f"  ❓ Unknown update key: {key}")
+    if 'vSensitivity' in updates:
+        v_sensitivity = float(updates['vSensitivity'])
+        current_state["vSensitivity"] = v_sensitivity
+    
+    if 'rate' in updates:
+        current_rate = int(updates['rate'])
+        current_state["rate"] = current_rate
+        rate_encoder.steps = current_rate
+        if hasattr(update_rate, 'last_steps'):
+            update_rate.last_steps = current_rate
+
+    if 'a_output' in updates:
+        current_a_output = float(updates['a_output'])
+        current_state["a_output"] = current_a_output
+        a_output_encoder.steps = int(current_a_output * 10)
+        last_a_output_steps = a_output_encoder.steps
+
+    if 'v_output' in updates:
+        current_v_output = float(updates['v_output'])
+        current_state["v_output"] = current_v_output
+        v_output_encoder.steps = int(current_v_output * 10)
+        last_v_output_steps = v_output_encoder.steps
+    
+    if 'isLocked' in updates:
+        is_locked = bool(updates['isLocked'])
+        current_state["isLocked"] = is_locked
     
     # Update the timestamp
     current_state["lastUpdate"] = time.time()
-    print(f"🔧 apply_control_updates completed")
-    print(f"📊 Final current_state: {current_state}")
-    
-    # Force broadcast the updated state to all clients
-    print(f"📡 Broadcasting state to all clients...")
-    broadcast_state()
-    
+
+
 def broadcast_state():
     """Broadcast the current state to all WebSocket clients"""
     global connected_clients, current_state
