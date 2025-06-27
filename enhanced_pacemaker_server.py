@@ -752,70 +752,65 @@ def handle_websocket_client(client_socket):
 def apply_control_updates(updates):
     """Apply updates from client to the current state"""
     global current_state, a_sensitivity, v_sensitivity, current_rate, current_a_output, current_v_output, is_locked
-    global last_a_output_steps, last_v_output_steps  # THIS WAS MISSING!
+    global last_a_output_steps, last_v_output_steps  # ADD THIS LINE - was missing!
     
-    # Only apply specific updates that we support
+    # Sensitivity updates work fine (no encoder sync needed)
     if 'aSensitivity' in updates:
         a_sensitivity = float(updates['aSensitivity'])
         current_state["aSensitivity"] = a_sensitivity
-        print(f"WebSocket: Updated A sensitivity to {a_sensitivity}")
     
     if 'vSensitivity' in updates:
         v_sensitivity = float(updates['vSensitivity'])
         current_state["vSensitivity"] = v_sensitivity
-        print(f"WebSocket: Updated V sensitivity to {v_sensitivity}")
     
+    # Rate updates - fix the tracking
     if 'rate' in updates:
         current_rate = int(updates['rate'])
         current_state["rate"] = current_rate
         
-        # Properly sync the rate encoder
+        # Sync encoder position
         rate_encoder.steps = current_rate
         
-        # Update the tracking variable if it exists
+        # Update tracking variable if it exists
         if hasattr(update_rate, 'last_steps'):
             update_rate.last_steps = current_rate
         
-        print(f"WebSocket: Updated rate to {current_rate} ppm")
+        print(f"Rate updated via WebSocket: {current_rate}")
 
+    # A Output updates - fix encoder sync and scaling
     if 'a_output' in updates:
         current_a_output = float(updates['a_output'])
         current_state["a_output"] = current_a_output
         
-        # Calculate proper encoder steps - you may need to adjust this scaling
-        # Based on your code, it looks like you're using a direct mapping, not * 10
-        step_size = get_output_step_size(current_a_output)
-        encoder_steps = int(current_a_output / step_size) * int(step_size * 10)  # Adjust as needed
+        # FIXED: Calculate proper encoder steps (reverse engineer from your get_output_step_size logic)
+        # Instead of arbitrary scaling, set encoder to match your current logic
+        new_encoder_steps = int(current_a_output * 10)  # Adjust this if needed
+        a_output_encoder.steps = new_encoder_steps
+        last_a_output_steps = new_encoder_steps  # NOW this updates the global variable
         
-        a_output_encoder.steps = encoder_steps
-        last_a_output_steps = encoder_steps  # Now this will work with global declaration
-        
-        print(f"WebSocket: Updated A output to {current_a_output} mA (encoder steps: {encoder_steps})")
+        print(f"A Output updated via WebSocket: {current_a_output} mA (encoder steps: {new_encoder_steps})")
 
+    # V Output updates - same fixes
     if 'v_output' in updates:
         current_v_output = float(updates['v_output'])
         current_state["v_output"] = current_v_output
         
-        # Calculate proper encoder steps - same scaling fix as A output
-        step_size = get_output_step_size(current_v_output)
-        encoder_steps = int(current_v_output / step_size) * int(step_size * 10)  # Adjust as needed
+        # FIXED: Same encoder sync issues
+        new_encoder_steps = int(current_v_output * 10)  # Adjust this if needed
+        v_output_encoder.steps = new_encoder_steps
+        last_v_output_steps = new_encoder_steps  # NOW this updates the global variable
         
-        v_output_encoder.steps = encoder_steps
-        last_v_output_steps = encoder_steps  # Now this will work with global declaration
-        
-        print(f"WebSocket: Updated V output to {current_v_output} mA (encoder steps: {encoder_steps})")
+        print(f"V Output updated via WebSocket: {current_v_output} mA (encoder steps: {new_encoder_steps})")
     
     if 'isLocked' in updates:
         is_locked = bool(updates['isLocked'])
         current_state["isLocked"] = is_locked
-        print(f"WebSocket: Updated lock state to {is_locked}")
     
     # Update the timestamp
     current_state["lastUpdate"] = time.time()
     
-    # Broadcast the updated state to all connected clients
+    # Force broadcast the updated state to all clients
     broadcast_state()
-    
     
     
 def broadcast_state():
