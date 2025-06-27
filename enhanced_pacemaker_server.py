@@ -659,33 +659,33 @@ def handle_websocket_client(client_socket):
                     # Handle control updates
                     # elif 'type' in parsed and parsed['type'] == 'control_update' and 'updates' in parsed:
                         # Check if this is an admin token or allow sensitivity updates for all
-                        if client_auth_token == 'pacemaker_token_123':
-                            # Admin can update everything
-                            apply_control_updates(parsed['updates'])
-                            response = json.dumps({
-                                "type": "info",
-                                "message": "Control updated successfully"
-                            })
-                            client_socket.sendall(create_websocket_frame(response))
-                        elif client_auth_token and ('vSensitivity' in parsed['updates'] or 'aSensitivity' in parsed['updates']):
-                            # Non-admin can only update sensitivity
-                            updates = {
-                                k: v for k, v in parsed['updates'].items() 
-                                if k in ['vSensitivity', 'aSensitivity']
-                            }
-                            apply_control_updates(updates)
-                            response = json.dumps({
-                                "type": "info",
-                                "message": "Sensitivity updated successfully"
-                            })
-                            client_socket.sendall(create_websocket_frame(response))
-                        else:
-                            # Unauthorized
-                            response = json.dumps({
-                                "type": "error",
-                                "message": "Unauthorized control update"
-                            })
-                            client_socket.sendall(create_websocket_frame(response))
+                        # if client_auth_token == 'pacemaker_token_123':
+                        #     # Admin can update everything
+                        #     apply_control_updates(parsed['updates'])
+                        #     response = json.dumps({
+                        #         "type": "info",
+                        #         "message": "Control updated successfully"
+                        #     })
+                        #     client_socket.sendall(create_websocket_frame(response))
+                        # elif client_auth_token and ('vSensitivity' in parsed['updates'] or 'aSensitivity' in parsed['updates']):
+                        #     # Non-admin can only update sensitivity
+                        #     updates = {
+                        #         k: v for k, v in parsed['updates'].items() 
+                        #         if k in ['vSensitivity', 'aSensitivity']
+                        #     }
+                        #     apply_control_updates(updates)
+                        #     response = json.dumps({
+                        #         "type": "info",
+                        #         "message": "Sensitivity updated successfully"
+                        #     })
+                        #     client_socket.sendall(create_websocket_frame(response))
+                        # else:
+                        #     # Unauthorized
+                        #     response = json.dumps({
+                        #         "type": "error",
+                        #         "message": "Unauthorized control update"
+                        #     })
+                        #     client_socket.sendall(create_websocket_frame(response))
 
                     # QUICKLY REVERT - Replace your WebSocket control update section with this minimal fix:
                     elif 'type' in parsed and parsed['type'] == 'control_update' and 'updates' in parsed:
@@ -713,7 +713,6 @@ def handle_websocket_client(client_socket):
                                 "message": "Unauthorized control update"
                             })
                             client_socket.sendall(create_websocket_frame(response))
-
 
 
                 except json.JSONDecodeError:
