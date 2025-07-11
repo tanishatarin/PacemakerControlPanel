@@ -1230,6 +1230,8 @@ const ControlPanel: React.FC = () => {
   const [isLocked, setIsLocked] = useState(false);
   const [autoLockTimer, setAutoLockTimer] = useState<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now()); // Track last activity time
+  const lockStateChangingRef = useRef(false); // Prevent lock state fighting
+  const lastLockToggleRef = useRef(0); // Prevent rapid toggling
   
   // Notification states
   const [showAsyncMessage, setShowAsyncMessage] = useState(false);
@@ -1862,14 +1864,23 @@ useEffect(() => {
           trackActivity('hardware encoder');
         }
 
-        // handles lock state changes
+        // handles lock state changes - with race condition prevention
         if (data.locked !== undefined && data.locked !== isLocked) {
-          setIsLocked(data.locked);
-          if (data.locked) {
-            // If device just locked, clear any auto-lock timer
-            if (autoLockTimer) {
-              clearTimeout(autoLockTimer);
-              setAutoLockTimer(null);
+          // Don't update if we're already changing lock state
+          if (!lockStateChangingRef.current) {
+            console.log(`Lock state change from hardware polling: ${data.locked}`);
+            setIsLocked(data.locked);
+            if (data.locked) {
+              // If device just locked, clear any auto-lock timer
+              if (autoLockTimer) {
+                clearTimeout(autoLockTimer);
+                setAutoLockTimer(null);
+              }
+            } else {
+              // If device just unlocked, start auto-lock timer
+              setTimeout(() => {
+                resetAutoLockTimer();
+              }, 300);
             }
           }
         }
@@ -2124,14 +2135,102 @@ useEffect(() => {
     };
   }, [trackActivity, handleModeNavigation, handleLeftArrowPress, handleEmergencyMode]);
 
-  // Handle lock state changes from hardware with enhanced timer management
+  // State to prevent lock state fighting
+  const lockStateChangingRef = useRef(false);
+  const lastLockToggleRef = useRef(0);
+
+  // Enhanced lock toggle with proper timer management and race condition prevention
+  const handleLockToggle = async () => {
+    trackActivity('lock toggle');
+    
+    // Prevent rapid toggling that can cause race conditions
+    const now = Date.now();
+    if (now - lastLockToggleRef.current < 1000) {
+      console.log("Ignoring rapid lock toggle to prevent race condition");
+      return;
+    }
+    lastLockToggleRef.current = now;
+    
+    // Prevent multiple concurrent lock state changes
+    if (lockStateChangingRef.current) {
+      console.log("Lock state change already in progress, ignoring");
+      return;
+    }
+    
+    lockStateChangingRef.current = true;
+    
+    try {
+      // Toggle the lock state locally first for immediate UI feedback
+      const newLockState = !isLocked;
+      setIsLocked(newLockState);
+      
+      // Clear auto-lock timer when manually locking/unlocking
+      if (autoLockTimer) {
+        clearTimeout(autoLockTimer);
+        setAutoLockTimer(null);
+      }
+      
+      // Update the hardware lock state
+      if (encoderConnected) {
+        try {
+          const hardwareLockState = await toggleLock();
+          if (hardwareLockState !== null && hardwareLockState !== newLockState) {
+            console.log("Hardware lock state doesn't match UI state, correcting UI");
+            setIsLocked(hardwareLockState);
+            
+            // Start timer if hardware says we're unlocked
+            if (!hardwareLockState) {
+              setTimeout(() => {
+                resetAutoLockTimer();
+              }, 200);
+            }
+          } else {
+            // States match, start timer if unlocking
+            if (!newLockState) {
+              setTimeout(() => {
+                resetAutoLockTimer();
+              }, 200);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to toggle hardware lock state:', err);
+          // Revert UI state if hardware toggle fails
+          setIsLocked(isLocked);
+        }
+      } else {
+        // No hardware connection, just manage timer locally
+        if (!newLockState) {
+          setTimeout(() => {
+            resetAutoLockTimer();
+          }, 200);
+        }
+      }
+    } finally {
+      // Always clear the changing flag after a delay
+      setTimeout(() => {
+        lockStateChangingRef.current = false;
+      }, 1500);
+    }
+  };
+
+  // Handle lock state changes from hardware with enhanced synchronization
   useEffect(() => {
     if (!encoderConnected) return;
     
     const checkLockState = async () => {
+      // Don't check if we're in the middle of changing lock state
+      if (lockStateChangingRef.current) {
+        return;
+      }
+      
       try {
         const lockState = await getLockState();
         if (lockState !== null && lockState !== isLocked) {
+          console.log(`Hardware lock state changed: ${lockState}, updating UI`);
+          
+          // Prevent race condition by setting the changing flag
+          lockStateChangingRef.current = true;
+          
           setIsLocked(lockState);
           
           // Clear existing timer
@@ -2144,63 +2243,27 @@ useEffect(() => {
           if (!lockState) {
             setTimeout(() => {
               resetAutoLockTimer();
-            }, 100);
+            }, 300);
           }
+          
+          // Clear the changing flag after state settles
+          setTimeout(() => {
+            lockStateChangingRef.current = false;
+          }, 1000);
         }
       } catch (error) {
         console.error('Error checking lock state:', error);
       }
     };
     
-    // Initial check
-    checkLockState();
+    // Initial check with delay to let component settle
+    setTimeout(checkLockState, 1000);
     
-    // Check every 500ms for lock state changes (reduced frequency)
-    const interval = setInterval(checkLockState, 500);
+    // Check every 1000ms for lock state changes (reduced frequency to prevent fighting)
+    const interval = setInterval(checkLockState, 1000);
     
     return () => clearInterval(interval);
   }, [encoderConnected, isLocked, autoLockTimer, resetAutoLockTimer]);
-
-  // Enhanced lock toggle with proper timer management
-  const handleLockToggle = async () => {
-    trackActivity('lock toggle');
-    
-    // Toggle the lock state locally first for immediate UI feedback
-    const newLockState = !isLocked;
-    setIsLocked(newLockState);
-    
-    // Clear auto-lock timer when manually locking/unlocking
-    if (autoLockTimer) {
-      clearTimeout(autoLockTimer);
-      setAutoLockTimer(null);
-    }
-    
-    // Start new timer only if unlocking
-    if (!newLockState) {
-      // Small delay to ensure state is updated, then reset timer
-      setTimeout(() => {
-        resetAutoLockTimer();
-      }, 100);
-    }
-    
-    // Update the lock LED state
-    if (encoderConnected) {
-      try {
-        toggleLock().then((hardwareLockState) => {
-          if (hardwareLockState !== null && hardwareLockState !== newLockState) {
-            console.log("Hardware lock state doesn't match UI state, updating UI");
-            setIsLocked(hardwareLockState);
-          }
-        }).catch(err => {
-          console.error('Failed to toggle hardware lock state:', err);
-          setIsLocked(isLocked);
-        });
-      } catch (err) {
-        console.error('Failed to toggle hardware lock state:', err);
-        setIsLocked(isLocked);
-      }
-    }
-  };
 
   // Add click handlers to UI elements to track activity
   const handleUIClick = (source: string) => {
