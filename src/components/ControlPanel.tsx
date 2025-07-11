@@ -1849,30 +1849,14 @@ useEffect(() => {
           trackActivity('hardware encoder');
         }
 
-        // Handle lock state changes - ONLY from hardware button, not auto-sync
+        // Handle lock state changes - DISABLED to prevent conflicts
+        // Only manual button toggles and auto-lock should change lock state
+        // Hardware sync is one-way: UI -> Hardware, not Hardware -> UI
+        /*
         if (data.locked !== undefined && data.locked !== isLocked) {
-          // Only update if this is from a hardware button press, not automatic syncing
-          const timeSinceLastManualToggle = Date.now() - lastLockToggleRef.current;
-          
-          // If it's been more than 2 seconds since manual toggle, this is likely hardware button
-          if (timeSinceLastManualToggle > 2000 && !lockStateChangingRef.current) {
-            console.log(`Hardware button lock state change: ${data.locked}`);
-            setIsLocked(data.locked);
-            
-            // Clear auto-lock timer
-            if (autoLockTimer) {
-              clearTimeout(autoLockTimer);
-              setAutoLockTimer(null);
-            }
-            
-            // Start auto-lock timer only if unlocking
-            if (!data.locked) {
-              setTimeout(() => {
-                resetAutoLockTimer();
-              }, 500);
-            }
-          }
+          // Hardware lock state changes disabled to prevent UI fighting
         }
+        */
       },
       // Status callback
       (status) => {
@@ -2083,6 +2067,49 @@ useEffect(() => {
     }
   }, [trackActivity, modes, encoderConnected, showDOOSettings]);
 
+    // Much simpler lock toggle - prioritize UI state
+  const handleLockToggle = async () => {
+    trackActivity('manual lock toggle');
+    
+    // Prevent rapid toggling
+    const now = Date.now();
+    if (now - lastLockToggleRef.current < 500) {
+      console.log("Ignoring rapid lock toggle");
+      return;
+    }
+    lastLockToggleRef.current = now;
+    
+    const newLockState = !isLocked;
+    console.log(`Manual lock toggle: ${isLocked} -> ${newLockState}`);
+    
+    // Update UI state immediately and authoritatively
+    setIsLocked(newLockState);
+    
+    // Clear auto-lock timer regardless of new state
+    if (autoLockTimer) {
+      clearTimeout(autoLockTimer);
+      setAutoLockTimer(null);
+    }
+    
+    // Start auto-lock timer only if unlocking
+    if (!newLockState) {
+      console.log("Starting auto-lock timer after manual unlock");
+      setTimeout(() => {
+        resetAutoLockTimer();
+      }, 100);
+    }
+    
+    // Try to sync with hardware but don't let it override UI
+    if (encoderConnected) {
+      try {
+        await toggleLock();
+        console.log("Synced lock state with hardware");
+      } catch (err) {
+        console.error('Failed to sync with hardware (but UI state is authoritative):', err);
+      }
+    }
+  };
+  
   // Set up enhanced hardware button listeners with activity tracking
   useEffect(() => {
     const handleHardwareUpButtonPress = () => {
@@ -2109,11 +2136,19 @@ useEffect(() => {
       handleEmergencyMode();
     };
 
+    // Hardware lock button should also work
+    const handleHardwareLockButtonPress = () => {
+      console.log("Hardware lock button press detected");
+      handleLockToggle();
+    };
+
     // Add event listeners
     window.addEventListener('hardware-up-button-pressed', handleHardwareUpButtonPress);
     window.addEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
     window.addEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
     window.addEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyButtonPress);
+    // Note: You may need to add this event in your encoderApi.ts if it doesn't exist
+    window.addEventListener('hardware-lock-button-pressed', handleHardwareLockButtonPress);
 
     // Clean up
     return () => {
@@ -2121,108 +2156,19 @@ useEffect(() => {
       window.removeEventListener('hardware-down-button-pressed', handleHardwareDownButtonPress);
       window.removeEventListener('hardware-left-button-pressed', handleHardwareLeftButtonPress);
       window.removeEventListener('hardware-emergency-button-pressed', handleHardwareEmergencyButtonPress);
+      window.removeEventListener('hardware-lock-button-pressed', handleHardwareLockButtonPress);
     };
-  }, [trackActivity, handleModeNavigation, handleLeftArrowPress, handleEmergencyMode]);
+  }, [trackActivity, handleModeNavigation, handleLeftArrowPress, handleEmergencyMode, handleLockToggle]);
 
-  // Simplified lock toggle - only manual control
-  const handleLockToggle = async () => {
-    trackActivity('manual lock toggle');
-    
-    // Prevent rapid toggling
-    const now = Date.now();
-    if (now - lastLockToggleRef.current < 1000) {
-      console.log("Ignoring rapid lock toggle");
-      return;
-    }
-    lastLockToggleRef.current = now;
-    
-    // Prevent multiple concurrent changes
-    if (lockStateChangingRef.current) {
-      console.log("Lock state change already in progress");
-      return;
-    }
-    
-    lockStateChangingRef.current = true;
-    
-    try {
-      const newLockState = !isLocked;
-      console.log(`Manual lock toggle: ${isLocked} -> ${newLockState}`);
-      
-      // Update UI immediately
-      setIsLocked(newLockState);
-      
-      // Clear auto-lock timer regardless of new state
-      if (autoLockTimer) {
-        clearTimeout(autoLockTimer);
-        setAutoLockTimer(null);
-      }
-      
-      // Start auto-lock timer only if unlocking
-      if (!newLockState) {
-        setTimeout(() => {
-          resetAutoLockTimer();
-        }, 500);
-      }
-      
-      // Sync with hardware if connected
-      if (encoderConnected) {
-        try {
-          await toggleLock();
-        } catch (err) {
-          console.error('Failed to sync with hardware:', err);
-        }
-      }
-    } finally {
-      setTimeout(() => {
-        lockStateChangingRef.current = false;
-      }, 1000);
-    }
-  };
 
-  // Simplified hardware lock state monitoring - only for hardware button detection
+  // Hardware lock state monitoring - DISABLED to prevent conflicts
+  // The UI is now the authoritative source for lock state
+  // Hardware sync is one-way: UI -> Hardware only
+  /*
   useEffect(() => {
-    if (!encoderConnected) return;
-    
-    const checkLockState = async () => {
-      // Don't interfere if we're manually changing lock state
-      if (lockStateChangingRef.current) {
-        return;
-      }
-      
-      try {
-        const lockState = await getLockState();
-        if (lockState !== null && lockState !== isLocked) {
-          const timeSinceLastManualToggle = Date.now() - lastLockToggleRef.current;
-          
-          // Only update if this seems like a hardware button press (not recent manual toggle)
-          if (timeSinceLastManualToggle > 2000) {
-            console.log(`Hardware button detected - lock state: ${lockState}`);
-            setIsLocked(lockState);
-            
-            // Clear auto-lock timer
-            if (autoLockTimer) {
-              clearTimeout(autoLockTimer);
-              setAutoLockTimer(null);
-            }
-            
-            // Start auto-lock timer only if unlocking
-            if (!lockState) {
-              setTimeout(() => {
-                resetAutoLockTimer();
-              }, 500);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error checking lock state:', error);
-      }
-    };
-    
-    // Check every 2 seconds (reduced frequency)
-    const interval = setInterval(checkLockState, 2000);
-    
-    return () => clearInterval(interval);
-  }, [encoderConnected, isLocked, autoLockTimer, resetAutoLockTimer]);
+    // Hardware lock state monitoring disabled to prevent UI fighting
+  }, []);
+  */
 
   // Add click handlers to UI elements to track activity
   const handleUIClick = (source: string) => {
