@@ -2135,10 +2135,6 @@ useEffect(() => {
     };
   }, [trackActivity, handleModeNavigation, handleLeftArrowPress, handleEmergencyMode]);
 
-  // State to prevent lock state fighting
-  const lockStateChangingRef = useRef(false);
-  const lastLockToggleRef = useRef(0);
-
   // Enhanced lock toggle with proper timer management and race condition prevention
   const handleLockToggle = async () => {
     trackActivity('lock toggle');
